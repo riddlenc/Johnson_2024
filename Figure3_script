@@ -1,0 +1,288 @@
+---
+title: "Climbing"
+author: "Nicole Riddle"
+date: "2024-05-22"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Setting things up
+```{r}
+library(readxl)
+library(ggplot2)
+library(dplyr)
+library(ARTool)
+library(here)
+
+theme_set(theme_classic())
+```
+
+## Importing data
+```{r}
+## import legend
+legend <- read_excel("legend_master.xlsx", sheet = "legend")
+
+## import data for each genotype:timepoint and bind into a master
+dgrp301_t1 <- read_excel("climbing_master.xlsx", sheet = "301_t1")
+dgrp301_t2 <- read_excel("climbing_master.xlsx", sheet = "301_t2")
+dgrp301_t3 <- read_excel("climbing_master.xlsx", sheet = "301_t3")
+dgrp304_t1 <- read_excel("climbing_master.xlsx", sheet = "304_t1")
+dgrp304_t2 <- read_excel("climbing_master.xlsx", sheet = "304_t2")
+dgrp304_t3 <- read_excel("climbing_master.xlsx", sheet = "304_t3")
+dgrp786_t1 <- read_excel("climbing_master.xlsx", sheet = "786_t1")
+dgrp786_t2 <- read_excel("climbing_master.xlsx", sheet = "786_t2")
+dgrp786_t3 <- read_excel("climbing_master.xlsx", sheet = "786_t3")
+dgrp852_t1 <- read_excel("climbing_master.xlsx", sheet = "852_t1")
+dgrp852_t2 <- read_excel("climbing_master.xlsx", sheet = "852_t2")
+dgrp852_t3 <- read_excel("climbing_master.xlsx", sheet = "852_t3")
+master <- rbind(dgrp301_t1, dgrp301_t2, dgrp301_t3, 
+                dgrp304_t1, dgrp304_t2, dgrp304_t3, 
+                dgrp786_t1, dgrp786_t2, dgrp786_t3, 
+                dgrp852_t1, dgrp852_t2, dgrp852_t3)
+
+master$vial_id <- as.numeric(master$vial_id)
+
+## join the legend to the master to unblind
+data <- left_join(master, legend, by = "vial_id")
+
+data$genotype <- as.factor(data$genotype)
+data$sex <- as.factor(data$sex)
+data$timepoint <- as.factor(data$timepoint)
+data$treatment <- as.factor(data$treatment)
+
+# cleaning up
+rm(list=setdiff(ls(), "data"))
+
+# Sanity check
+summary(data)
+```
+So far, everything looks good.
+
+## Checking for normality etc
+
+```{r}
+timepoint1 <- subset(data, timepoint == "t1")
+timepoint2 <- subset(data, timepoint == "t2")
+timepoint3 <- subset(data, timepoint == "t3")
+shapiro.test(timepoint1$score_adj_norm)
+shapiro.test(timepoint2$score_adj_norm)
+shapiro.test(timepoint3$score_adj_norm)
+
+hist(timepoint1$score_adj_norm)
+hist(timepoint2$score_adj_norm)
+hist(timepoint3$score_adj_norm)
+
+#checking residuals
+model1 <- aov(score_adj_norm ~ sex*genotype*treatment, data = timepoint1)
+shapiro.test(model1$residuals)
+model2 <- aov(score_adj_norm ~ sex*genotype*treatment, data = timepoint2)
+shapiro.test(model2$residuals)
+model3 <- aov(score_adj_norm ~ sex*genotype*treatment, data = timepoint3)
+shapiro.test(model3$residuals)
+```
+Based on these results, timepoint 1 is normal and can be analyzed with regular ANOVA, but the other two are not. 
+
+## ART ANOVA
+```{r}
+model <- art(score_adj_norm ~ sex*genotype*treatment, data = subset(data, timepoint == "t1"))
+summary(model)
+anova(model)
+rm(model)
+
+model <- art(score_adj_norm ~ sex*genotype*treatment, data = subset(data, timepoint == "t2"))
+summary(model)
+anova(model)
+options(max.print = 2000)
+marginal = art.con(model, "sex:genotype:treatment", adjust = "tukey")
+marginal
+rm(model)
+
+model <- art(score_adj_norm ~ sex*genotype*treatment, data = subset(data, timepoint == "t3"))
+summary(model)
+anova(model)
+options(max.print = 2000)
+marginal = art.con(model, "sex:genotype:treatment", adjust = "tukey")
+marginal
+rm(model)
+```
+
+The ART ANOVA has warnings again, suggesting that it's not the best way to analyze the data. Will need to run some additional tests to make sure we are confident in these results. 
+
+## ANOVA etc
+```{r}
+# non-parametric tests for main effects
+kruskal.test(score_adj_norm ~ sex, data = timepoint1)
+kruskal.test(score_adj_norm ~ genotype, data = timepoint1)  #**
+kruskal.test(score_adj_norm ~ treatment, data = timepoint1)
+kruskal.test(score_adj_norm ~ sex, data = timepoint2)
+kruskal.test(score_adj_norm ~ genotype, data = timepoint2)  #**
+kruskal.test(score_adj_norm ~ treatment, data = timepoint2) #**
+kruskal.test(score_adj_norm ~ sex, data = timepoint3)
+kruskal.test(score_adj_norm ~ genotype, data = timepoint3)  #**
+kruskal.test(score_adj_norm ~ treatment, data = timepoint3) #**
+
+
+# ANOVA
+summary(aov(score_adj_norm ~ sex * genotype * treatment, data=timepoint1))
+# Reducing the model to significant factors only
+summary(aov(score_adj_norm ~ sex + genotype + treatment, data=timepoint1))
+# post-hoc test
+model <- aov(score_adj_norm ~ sex + genotype + treatment, data=timepoint1)
+TukeyHSD(model, conf.level=.95)
+rm(model)
+
+summary(aov(score_adj_norm ~ sex * genotype * treatment, data=timepoint2))
+# Reducing the model to significant factors only
+summary(aov(score_adj_norm ~ sex + genotype + treatment + sex:genotype + sex:treatment + genotype:treatment, data=timepoint2))
+# post-hoc test
+model <- aov(score_adj_norm ~ sex + genotype + treatment + sex:genotype + sex:treatment + genotype:treatment, data=timepoint2)
+TukeyHSD(model, conf.level=.95)
+rm(model)
+
+summary(aov(score_adj_norm ~ sex * genotype * treatment, data=timepoint3))
+# Reducing the model to significant factors only
+summary(aov(score_adj_norm ~ sex + genotype + treatment + sex:genotype, data=timepoint3))
+# post-hoc test
+model <- (aov(score_adj_norm ~ sex + genotype + treatment + sex:genotype, data=timepoint3))
+TukeyHSD(model, conf.level=.95)
+rm(model)
+```
+
+For timepoint 1, things are easy, but for the other two time points, the two analyses don't quite agree with each other. 
+
+```{r}
+wilcox.test(score_adj_norm ~ treatment, data = subset(timepoint2, (treatment == "20d" | treatment == "c")) )
+wilcox.test(score_adj_norm ~ treatment, data = subset(timepoint2, (treatment == "20d" | treatment == "5d")) )
+wilcox.test(score_adj_norm ~ treatment, data = subset(timepoint2, (treatment == "c" | treatment == "5d")) )
+
+wilcox.test(score_adj_norm ~ treatment, data = subset(timepoint3, (treatment == "20d" | treatment == "c")) )
+wilcox.test(score_adj_norm ~ treatment, data = subset(timepoint3, (treatment == "20d" | treatment == "5d")) )
+wilcox.test(score_adj_norm ~ treatment, data = subset(timepoint3, (treatment == "c" | treatment == "5d")) )
+
+```
+
+
+## Plots
+
+```{r}
+boxplot <- ggplot(data = subset(data, (treatment == "c" | treatment == "5d")), aes(x = genotype, y = score_adj_norm))+
+  geom_boxplot(aes(color = treatment), outlier.size = 0.25)+
+  geom_jitter(aes(x = genotype, y = score_adj_norm, color = treatment), position = position_jitterdodge(), size = 0.25)+
+  facet_wrap(c("timepoint", "sex"), nrow = 3)
+
+boxplot + scale_color_manual(values = c("#EFC000FF", "#0073C2FF"), 
+                             name = "Treatment", 
+                             labels = c("5-day", "Control")) + ylab("Climbing score")+ xlab("Genotype")
+
+
+boxplot <- ggplot(data = subset(data, (treatment == "c" | treatment == "5d")), aes(x = genotype, y = score_adj_norm))+
+  geom_boxplot(aes(color = treatment), outlier.size = .5)+
+  facet_wrap(c("timepoint", "sex"), nrow = 3)
+
+boxplot + scale_color_manual(values = c("#EFC000FF", "#0073C2FF"), 
+                             name = "Treatment", 
+                             labels = c("5-day", "Control")) + ylab("Climbing score")+ xlab("Genotype")
+
+
+boxplot <- ggplot(data = subset(data, (treatment == "c" | treatment == "20d")), aes(x = genotype, y = score_adj_norm))+
+  geom_boxplot(aes(color = treatment), outlier.size = 0.25)+
+  geom_jitter(aes(x = genotype, y = score_adj_norm, color = treatment), position = position_jitterdodge(), size = 0.25)+
+  facet_wrap(c("timepoint", "sex"), nrow = 3)
+
+boxplot + scale_color_manual(values = c("#CD534CFF", "#0073C2FF"), 
+                             name = "Treatment", 
+                             labels = c("20-day", "Control")) + ylab("Climbing score")+ xlab("Genotype")
+
+
+boxplot <- ggplot(data = subset(data, (treatment == "c" | treatment == "20d")), aes(x = genotype, y = score_adj_norm))+
+  geom_boxplot(aes(color = treatment), outlier.size = .5)+
+  facet_wrap(c("timepoint", "sex"), nrow = 3)
+
+boxplot + scale_color_manual(values = c("#CD534CFF", "#0073C2FF"), 
+                             name = "Treatment", 
+                             labels = c("20-day", "Control")) + ylab("Climbing score")+ xlab("Genotype")
+
+stripchart(score_adj_norm ~ genotype*treatment, data = data, method = "jitter",
+           vertical = TRUE)
+```
+
+
+## Alternative analysis 
+Because we want to contrast effects immediately after exercise to long-term effects, 
+we don't actually want to analyze all of time point 2 together. Instead, we want to do the analysis for 5d and 20d separately. 
+
+For timepoint 1, we only have 5d, so that does not need modification.
+
+For timepoint 2, we have one long-term effect analysis for 5d and an immediate effect
+analysis for the 20D treatment. 
+
+For timepoint 3, both are long-term effects, so we could leave that together, but for consistency, I'll do the separate analysis as well.  
+
+# Time point 2
+```{r}
+# Subsetting
+timepoint2.5d <- subset(timepoint2, (treatment == "c" | treatment == "5d"))
+timepoint2.20d <- subset(timepoint2, (treatment == "c" | treatment == "20d"))
+
+timepoint3.5d <- subset(timepoint3, (treatment == "c" | treatment == "5d"))
+timepoint3.20d <- subset(timepoint3, (treatment == "c" | treatment == "20d"))
+
+# Normality tests
+shapiro.test(timepoint2.5d$score_adj_norm) # not normal
+shapiro.test(timepoint2.20d$score_adj_norm) # not normal
+
+shapiro.test(timepoint3.5d$score_adj_norm) # not normal
+shapiro.test(timepoint3.20d$score_adj_norm) # not normal
+
+#ART ANOVA
+model <- art(score_adj_norm ~ sex*genotype*treatment, data = timepoint2.5d)
+summary(model)
+anova(model)
+options(max.print = 2000)
+marginal = art.con(model, "sex:genotype:treatment", adjust = "tukey")
+marginal
+rm(model)
+
+model <- art(score_adj_norm ~ sex*genotype*treatment, data = timepoint2.20d)
+summary(model)
+anova(model)
+options(max.print = 2000)
+marginal = art.con(model, "sex:genotype:treatment", adjust = "tukey")
+marginal
+rm(model)
+
+model <- art(score_adj_norm ~ sex*genotype*treatment, data = timepoint3.5d)
+summary(model)
+anova(model)
+options(max.print = 2000)
+marginal = art.con(model, "sex:genotype:treatment", adjust = "tukey")
+marginal
+rm(model)
+
+model <- art(score_adj_norm ~ sex*genotype*treatment, data = timepoint3.20d)
+summary(model)
+anova(model)
+options(max.print = 2000)
+marginal = art.con(model, "sex:genotype:treatment", adjust = "tukey")
+marginal
+rm(model)
+
+# ANOVA
+summary(aov(score_adj_norm ~ sex + genotype + treatment+sex:genotype + sex:treatment, data=timepoint2.5d))
+
+summary(aov(score_adj_norm ~ sex * genotype * treatment, data=timepoint2.20d))
+
+summary(aov(score_adj_norm ~ sex + genotype + treatment +sex*genotype, data=timepoint3.5d))
+
+summary(aov(score_adj_norm ~ sex + genotype + treatment + sex*genotype, data=timepoint3.20d))
+
+```
+
+
+
+
+
