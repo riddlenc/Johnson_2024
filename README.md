@@ -54,5 +54,5 @@ Data and analysis scripts associated with the Johnson et al 2024 manuscript.
 
 **2. Supplemental Figure S2**
 
-- Data
+- [Data](https://github.com/riddlenc/Johnson_2024/blob/main/FigureS2_data.zip)
 - [Script](https://github.com/riddlenc/Johnson_2024/blob/main/FigureS2_script)
