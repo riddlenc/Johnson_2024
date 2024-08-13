@@ -29,7 +29,7 @@ Data and analysis scripts associated with the Johnson et al 2024 manuscript.
 
 **5. Figure 5**
 
-- Data
+- [Data](https://github.com/riddlenc/Johnson_2024/blob/main/QMR_master.xlsx)
 - [Script](https://github.com/riddlenc/Johnson_2024/blob/main/Figure5_script)
 
 
