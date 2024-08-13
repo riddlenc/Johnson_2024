@@ -25,3 +25,21 @@ Data and analysis scripts associated with the Johnson et al 2024 manuscript.
 
 - Data
 - [Script](https://github.com/riddlenc/Johnson_2024/blob/main/Figure4_script)
+
+
+**5. Figure 5**
+
+- Data
+- Script
+
+
+**6. Figure 6**
+
+- Data
+- Script
+
+
+**7. Figure 7**
+
+- Data
+- Script
