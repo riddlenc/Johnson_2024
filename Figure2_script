@@ -1,0 +1,1241 @@
+## This script analyzes data from each temp_genotype in the 5d temp_treatment experiments
+
+library(readxl)
+library(reshape2)
+library(ggplot2)
+library(writexl)
+library(reshape)
+library(dplyr)
+library(ARTool)
+library(here)
+## using "here" we don't need to set a working directory. Just keep the script
+## and all data files in the same folder.
+
+## set working directory and load data and the legends for each assay
+## setwd("/Users/heidijohnson/Documents/data/DAM_assays/master")
+theme_set(theme_classic())
+## loading data frames for DAM data
+## set file name
+temp_filename <- "301_5D.C.xlsx"
+temp_genotype <- "301"
+temp_treatment <- "5d"
+
+## Note that in DGRP 301 5-day temp_treatment data, there is no mid-life timepoint
+## load the normalized data into a dataframe for each timepoint/temp_treatment
+temp_el_c <- read_excel(temp_filename, sheet = "el_c_norm")
+temp_el_5d <- read_excel(temp_filename, sheet = "el_5d_norm")
+temp_ll_c <- read_excel(temp_filename, sheet = "ll_c_norm")
+temp_ll_5d <- read_excel(temp_filename, sheet = "ll_5d_norm")
+## load the legend
+legend_c <- read_excel(temp_filename, sheet = "legend_c")
+legend_c$vial_no <- as.factor(legend_c$vial_no)
+legend_5d <- read_excel(temp_filename, sheet = "legend_5d")
+legend_5d$vial_no <- as.factor(legend_5d$vial_no)
+## trim off first 60 minutes
+temp_el_c <- temp_el_c[-c(1:12),]
+temp_el_5d <- temp_el_5d[-c(1:12),]
+temp_ll_c <- temp_ll_c[-c(1:12),]
+temp_ll_5d <- temp_ll_5d[-c(1:12),]
+## pull out the first 24 hours after trimming
+temp_el_c <- temp_el_c[-c(289:nrow(temp_el_c)),]
+temp_el_5d <- temp_el_5d[-c(289:nrow(temp_el_5d)),]
+temp_ll_c <- temp_ll_c[-c(289:nrow(temp_ll_c)),]
+temp_ll_5d <- temp_ll_5d[-c(289:nrow(temp_ll_5d)),]
+## convert to data frame
+temp_el_c <- as.data.frame(temp_el_c)
+temp_el_5d <- as.data.frame(temp_el_5d)
+temp_ll_c <- as.data.frame(temp_ll_c)
+temp_ll_5d <- as.data.frame(temp_ll_5d)
+## use the melt function to convert to long format
+temp_el_c <- melt(temp_el_c, id.vars = c("index", "date", "time"), 
+             measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                              "9", "10", "11", "12", "13", "14", "15",
+                              "16", "17", "18", "19", "20", "21", "22",
+                              "23", "24", "25", "26", "27", "28", "29", 
+                              "30"))
+temp_el_5d <- melt(temp_el_5d, id.vars = c("index", "date", "time"), 
+              measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                               "9", "10", "11", "12", "13", "14", "15",
+                               "16", "17", "18", "19", "20", "21", "22",
+                               "23", "24", "25", "26", "27", "28", "29", 
+                               "30"))
+temp_ll_c <- melt(temp_ll_c, id.vars = c("index", "date", "time"), 
+             measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                              "9", "10", "11", "12", "13", "14", "15",
+                              "16", "17", "18", "19", "20", "21", "22",
+                              "23", "24", "25", "26", "27", "28", "29", 
+                              "30"))
+temp_ll_5d <- melt(temp_ll_5d, id.vars = c("index", "date", "time"), 
+              measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                               "9", "10", "11", "12", "13", "14", "15",
+                               "16", "17", "18", "19", "20", "21", "22",
+                               "23", "24", "25", "26", "27", "28", "29", 
+                               "30"))
+
+#after data is in long format, sum the 5-minute intervals into one daily total
+temp_el_c <- aggregate(temp_el_c$value, by=list(vial_no=temp_el_c$variable), FUN=sum)
+temp_el_5d <- aggregate(temp_el_5d$value, by=list(vial_no=temp_el_5d$variable), FUN=sum)
+temp_ll_c <- aggregate(temp_ll_c$value, by=list(vial_no=temp_ll_c$variable), FUN=sum)
+temp_ll_5d <- aggregate(temp_ll_5d$value, by=list(vial_no=temp_ll_5d$variable), FUN=sum)
+## rename columns from variable and value
+colnames(temp_el_c) <- c("vial_no", "daily_activity")
+colnames(temp_el_5d) <- c("vial_no", "daily_activity")
+colnames(temp_ll_c) <- c("vial_no", "daily_activity")
+colnames(temp_ll_5d) <- c("vial_no", "daily_activity")  
+## unblind using the legends- specific to temp_treatment- on the vial_no value
+temp_el_c <- left_join(temp_el_c, legend_c, by = "vial_no")
+temp_el_5d <- left_join(temp_el_5d, legend_5d, by = "vial_no")
+temp_ll_c <- left_join(temp_ll_c, legend_c, by = "vial_no")
+temp_ll_5d <- left_join(temp_ll_5d, legend_5d, by = "vial_no")
+## get rid of unneeded columns
+keeps <- c("vial_no", "daily_activity", "treatment", "genotype", "sex")
+temp_el_c <- temp_el_c[keeps]
+temp_el_5d <- temp_el_5d[keeps]
+temp_ll_c <- temp_ll_c[keeps]
+temp_ll_5d <- temp_ll_5d[keeps]
+## add a column with the timepoint value
+temp_el_c$age = "8"
+temp_el_5d$age = "8"
+temp_ll_c$age = "56"
+temp_ll_5d$age = "56"
+##adjust class of the factors
+temp_el_c$age = as.factor(temp_el_c$age)
+temp_el_5d$age = as.factor(temp_el_5d$age)
+temp_ll_c$age = as.factor(temp_ll_c$age)
+temp_ll_5d$age = as.factor(temp_ll_5d$age)
+temp_el_c$sex = as.factor(temp_el_c$sex)
+temp_el_5d$sex = as.factor(temp_el_5d$sex)
+temp_ll_c$sex = as.factor(temp_ll_c$sex)
+temp_ll_5d$sex = as.factor(temp_ll_5d$sex)
+temp_el_c$treatment = as.factor(temp_el_c$treatment)
+temp_el_5d$treatment = as.factor(temp_el_5d$treatment)
+temp_ll_c$treatment = as.factor(temp_ll_c$treatment)
+temp_ll_5d$treatment = as.factor(temp_ll_5d$treatment)
+## combine the temp_treatments into one master per timepoint
+master_5d_301_el <- rbind(temp_el_c, temp_el_5d)
+master_5d_301_ll <- rbind(temp_ll_c, temp_ll_5d)
+
+##remove all variables before working through another experiment
+rm(list = ls(pattern = "^temp"))
+
+## loading data frames for DAM data on the 304 5-day experiment
+## set file name
+temp_filename <- "304_5D.C.xlsx"
+temp_genotype <- "304"
+temp_treatment <- "5d"
+## load the normalized data into a dataframe for each timepoint/temp_treatment
+temp_el_c <- read_excel(temp_filename, sheet = "el_c_norm")
+temp_el_5d <- read_excel(temp_filename, sheet = "el_5d_norm")
+temp_ml_c <- read_excel(temp_filename, sheet = "ml_c_norm")
+temp_ml_5d <- read_excel(temp_filename, sheet = "ml_5d_norm")
+temp_ll_c <- read_excel(temp_filename, sheet = "ll_c_norm")
+temp_ll_5d <- read_excel(temp_filename, sheet = "ll_5d_norm")
+## load the legend
+legend_c <- read_excel(temp_filename, sheet = "legend_c")
+legend_c$vial_no <- as.factor(legend_c$vial_no)
+legend_5d <- read_excel(temp_filename, sheet = "legend_5d")
+legend_5d$vial_no <- as.factor(legend_5d$vial_no)
+## trim off first 60 minutes
+temp_el_c <- temp_el_c[-c(1:12),]
+temp_el_5d <- temp_el_5d[-c(1:12),]
+temp_ml_c <- temp_ml_c[-c(1:12),]
+temp_ml_5d <- temp_ml_5d[-c(1:12),]
+temp_ll_c <- temp_ll_c[-c(1:12),]
+temp_ll_5d <- temp_ll_5d[-c(1:12),]
+
+## pull out the first 24 hours after trimming
+temp_el_c <- temp_el_c[-c(289:nrow(temp_el_c)),]
+temp_el_5d <- temp_el_5d[-c(289:nrow(temp_el_5d)),]
+temp_ml_c <- temp_ml_c[-c(289:nrow(temp_ml_c)),]
+temp_ml_5d <- temp_ml_5d[-c(289:nrow(temp_ml_5d)),]
+temp_ll_c <- temp_ll_c[-c(289:nrow(temp_ll_c)),]
+temp_ll_5d <- temp_ll_5d[-c(289:nrow(temp_ll_5d)),]
+
+## convert to data frame
+temp_el_c <- as.data.frame(temp_el_c)
+temp_el_5d <- as.data.frame(temp_el_5d)
+temp_ml_c <- as.data.frame(temp_ml_c)
+temp_ml_5d <- as.data.frame(temp_ml_5d)
+temp_ll_c <- as.data.frame(temp_ll_c)
+temp_ll_5d <- as.data.frame(temp_ll_5d)
+
+## use the melt function to convert to long format
+temp_el_c <- melt(temp_el_c, id.vars = c("index", "date", "time"), 
+             measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                              "9", "10", "11", "12", "13", "14", "15",
+                              "16", "17", "18", "19", "20", "21", "22",
+                              "23", "24", "25", "26", "27", "28", "29", 
+                              "30"))
+temp_el_5d <- melt(temp_el_5d, id.vars = c("index", "date", "time"), 
+              measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                               "9", "10", "11", "12", "13", "14", "15",
+                               "16", "17", "18", "19", "20", "21", "22",
+                               "23", "24", "25", "26", "27", "28", "29", 
+                               "30"))
+temp_ml_c <- melt(temp_ml_c, id.vars = c("index", "date", "time"), 
+             measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                              "9", "10", "11", "12", "13", "14", "15",
+                              "16", "17", "18", "19", "20", "21", "22",
+                              "23", "24", "25", "26", "27", "28", "29", 
+                              "30"))
+temp_ml_5d <- melt(temp_ml_5d, id.vars = c("index", "date", "time"), 
+              measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                               "9", "10", "11", "12", "13", "14", "15",
+                               "16", "17", "18", "19", "20", "21", "22",
+                               "23", "24", "25", "26", "27", "28", "29", 
+                               "30"))
+temp_ll_c <- melt(temp_ll_c, id.vars = c("index", "date", "time"), 
+             measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                              "9", "10", "11", "12", "13", "14", "15",
+                              "16", "17", "18", "19", "20", "21", "22",
+                              "23", "24", "25", "26", "27", "28", "29", 
+                              "30"))
+temp_ll_5d <- melt(temp_ll_5d, id.vars = c("index", "date", "time"), 
+              measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                               "9", "10", "11", "12", "13", "14", "15",
+                               "16", "17", "18", "19", "20", "21", "22",
+                               "23", "24", "25", "26", "27", "28", "29", 
+                               "30"))
+
+#after data is in long format, sum the 5-minute intervals into one daily total
+temp_el_c <- aggregate(temp_el_c$value, by=list(vial_no=temp_el_c$variable), FUN=sum)
+temp_el_5d <- aggregate(temp_el_5d$value, by=list(vial_no=temp_el_5d$variable), FUN=sum)
+temp_ml_c <- aggregate(temp_ml_c$value, by=list(vial_no=temp_ml_c$variable), FUN=sum)
+temp_ml_5d <- aggregate(temp_ml_5d$value, by=list(vial_no=temp_ml_5d$variable), FUN=sum)
+temp_ll_c <- aggregate(temp_ll_c$value, by=list(vial_no=temp_ll_c$variable), FUN=sum)
+temp_ll_5d <- aggregate(temp_ll_5d$value, by=list(vial_no=temp_ll_5d$variable), FUN=sum)
+
+
+## rename columns from variable and value
+colnames(temp_el_c) <- c("vial_no", "daily_activity")
+colnames(temp_el_5d) <- c("vial_no", "daily_activity")
+colnames(temp_ml_c) <- c("vial_no", "daily_activity")
+colnames(temp_ml_5d) <- c("vial_no", "daily_activity")
+colnames(temp_ll_c) <- c("vial_no", "daily_activity")
+colnames(temp_ll_5d) <- c("vial_no", "daily_activity")  
+
+## unblind using the legends- specific to temp_treatment- on the vial_no value
+temp_el_c <- left_join(temp_el_c, legend_c, by = "vial_no")
+temp_el_5d <- left_join(temp_el_5d, legend_5d, by = "vial_no")
+temp_ml_c <- left_join(temp_ml_c, legend_c, by = "vial_no")
+temp_ml_5d <- left_join(temp_ml_5d, legend_5d, by = "vial_no")
+temp_ll_c <- left_join(temp_ll_c, legend_c, by = "vial_no")
+temp_ll_5d <- left_join(temp_ll_5d, legend_5d, by = "vial_no")
+
+## get rid of unneeded columns
+keeps <- c("vial_no", "daily_activity", "treatment", "genotype", "sex")
+temp_el_c <- temp_el_c[keeps]
+temp_el_5d <- temp_el_5d[keeps]
+temp_ml_c <- temp_ml_c[keeps]
+temp_ml_5d <- temp_ml_5d[keeps]
+temp_ll_c <- temp_ll_c[keeps]
+temp_ll_5d <- temp_ll_5d[keeps]
+
+## add a column with the timepoint value
+temp_el_c$age = "9"
+temp_el_5d$age = "9"
+temp_ml_c$age = "34"
+temp_ml_5d$age = "34"
+temp_ll_c$age = "52"
+temp_ll_5d$age = "52"
+##adjust class of factors
+temp_el_c$age = as.factor(temp_el_c$age)
+temp_el_5d$age = as.factor(temp_el_5d$age)
+temp_ml_c$age = as.factor(temp_ml_c$age)
+temp_ml_5d$age = as.factor(temp_ml_5d$age)
+temp_ll_c$age = as.factor(temp_ll_c$age)
+temp_ll_5d$age = as.factor(temp_ll_5d$age)
+temp_el_c$sex = as.factor(temp_el_c$sex)
+temp_el_5d$sex = as.factor(temp_el_5d$sex)
+temp_ml_c$sex = as.factor(temp_ml_c$sex)
+temp_ml_5d$sex = as.factor(temp_ml_5d$sex)
+temp_ll_c$sex = as.factor(temp_ll_c$sex)
+temp_ll_5d$sex = as.factor(temp_ll_5d$sex)
+temp_el_c$treatment = as.factor(temp_el_c$treatment)
+temp_el_5d$treatment = as.factor(temp_el_5d$treatment)
+temp_ml_c$treatment = as.factor(temp_ml_c$treatment)
+temp_ml_5d$treatment = as.factor(temp_ml_5d$treatment)
+temp_ll_c$treatment = as.factor(temp_ll_c$treatment)
+temp_ll_5d$treatment = as.factor(temp_ll_5d$treatment)
+## combine the temp_treatments into one master per timepoint
+master_5d_304_el <- rbind(temp_el_c, temp_el_5d)
+master_5d_304_ml <- rbind(temp_ml_c, temp_ml_5d)
+master_5d_304_ll <- rbind(temp_ll_c, temp_ll_5d)
+
+##remove all variables before working through another experiment
+rm(list = ls(pattern = "^temp"))
+
+## loading data frames for DAM data on the 786 5-day experiment
+## set file name
+temp_filename <- "786_5D.C.xlsx"
+temp_genotype <- "786"
+temp_treatment <- "5d"
+## load the normalized data into a dataframe for each timepoint/temp_treatment
+temp_el_c <- read_excel(temp_filename, sheet = "el_c_norm")
+temp_el_5d <- read_excel(temp_filename, sheet = "el_5d_norm")
+temp_ml_c <- read_excel(temp_filename, sheet = "ml_c_norm")
+temp_ml_5d <- read_excel(temp_filename, sheet = "ml_5d_norm")
+temp_ll_c <- read_excel(temp_filename, sheet = "ll_c_norm")
+temp_ll_5d <- read_excel(temp_filename, sheet = "ll_5d_norm")
+## load the legend
+legend_c <- read_excel(temp_filename, sheet = "legend_c")
+legend_c$vial_no <- as.factor(legend_c$vial_no)
+legend_5d <- read_excel(temp_filename, sheet = "legend_5d")
+legend_5d$vial_no <- as.factor(legend_5d$vial_no)
+## trim off first 60 minutes
+temp_el_c <- temp_el_c[-c(1:12),]
+temp_el_5d <- temp_el_5d[-c(1:12),]
+temp_ml_c <- temp_ml_c[-c(1:12),]
+temp_ml_5d <- temp_ml_5d[-c(1:12),]
+temp_ll_c <- temp_ll_c[-c(1:12),]
+temp_ll_5d <- temp_ll_5d[-c(1:12),]
+
+## pull out the first 24 hours after trimming
+temp_el_c <- temp_el_c[-c(289:nrow(temp_el_c)),]
+temp_el_5d <- temp_el_5d[-c(289:nrow(temp_el_5d)),]
+temp_ml_c <- temp_ml_c[-c(289:nrow(temp_ml_c)),]
+temp_ml_5d <- temp_ml_5d[-c(289:nrow(temp_ml_5d)),]
+temp_ll_c <- temp_ll_c[-c(289:nrow(temp_ll_c)),]
+temp_ll_5d <- temp_ll_5d[-c(289:nrow(temp_ll_5d)),]
+
+## convert to data frame
+temp_el_c <- as.data.frame(temp_el_c)
+temp_el_5d <- as.data.frame(temp_el_5d)
+temp_ml_c <- as.data.frame(temp_ml_c)
+temp_ml_5d <- as.data.frame(temp_ml_5d)
+temp_ll_c <- as.data.frame(temp_ll_c)
+temp_ll_5d <- as.data.frame(temp_ll_5d)
+
+## use the melt function to convert to long format
+temp_el_c <- melt(temp_el_c, id.vars = c("index", "date", "time"), 
+             measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                              "9", "10", "11", "12", "13", "14", "15",
+                              "16", "17", "18", "19", "20", "21", "22",
+                              "23", "24", "25", "26", "27", "28", "29", 
+                              "30"))
+temp_el_5d <- melt(temp_el_5d, id.vars = c("index", "date", "time"), 
+              measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                               "9", "10", "11", "12", "13", "14", "15",
+                               "16", "17", "18", "19", "20", "21", "22",
+                               "23", "24", "25", "26", "27", "28", "29", 
+                               "30"))
+temp_ml_c <- melt(temp_ml_c, id.vars = c("index", "date", "time"), 
+             measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                              "9", "10", "11", "12", "13", "14", "15",
+                              "16", "17", "18", "19", "20", "21", "22",
+                              "23", "24", "25", "26", "27", "28", "29", 
+                              "30"))
+temp_ml_5d <- melt(temp_ml_5d, id.vars = c("index", "date", "time"), 
+              measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                               "9", "10", "11", "12", "13", "14", "15",
+                               "16", "17", "18", "19", "20", "21", "22",
+                               "23", "24", "25", "26", "27", "28", "29", 
+                               "30"))
+temp_ll_c <- melt(temp_ll_c, id.vars = c("index", "date", "time"), 
+             measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                              "9", "10", "11", "12", "13", "14", "15",
+                              "16", "17", "18", "19", "20", "21", "22",
+                              "23", "24", "25", "26", "27", "28", "29", 
+                              "30"))
+temp_ll_5d <- melt(temp_ll_5d, id.vars = c("index", "date", "time"), 
+              measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                               "9", "10", "11", "12", "13", "14", "15",
+                               "16", "17", "18", "19", "20", "21", "22",
+                               "23", "24", "25", "26", "27", "28", "29", 
+                               "30"))
+
+#after data is in long format, sum the 5-minute intervals into one daily total
+temp_el_c <- aggregate(temp_el_c$value, by=list(vial_no=temp_el_c$variable), FUN=sum)
+temp_el_5d <- aggregate(temp_el_5d$value, by=list(vial_no=temp_el_5d$variable), FUN=sum)
+temp_ml_c <- aggregate(temp_ml_c$value, by=list(vial_no=temp_ml_c$variable), FUN=sum)
+temp_ml_5d <- aggregate(temp_ml_5d$value, by=list(vial_no=temp_ml_5d$variable), FUN=sum)
+temp_ll_c <- aggregate(temp_ll_c$value, by=list(vial_no=temp_ll_c$variable), FUN=sum)
+temp_ll_5d <- aggregate(temp_ll_5d$value, by=list(vial_no=temp_ll_5d$variable), FUN=sum)
+
+
+## rename columns from variable and value
+colnames(temp_el_c) <- c("vial_no", "daily_activity")
+colnames(temp_el_5d) <- c("vial_no", "daily_activity")
+colnames(temp_ml_c) <- c("vial_no", "daily_activity")
+colnames(temp_ml_5d) <- c("vial_no", "daily_activity")
+colnames(temp_ll_c) <- c("vial_no", "daily_activity")
+colnames(temp_ll_5d) <- c("vial_no", "daily_activity")  
+
+## unblind using the legends- specific to temp_treatment- on the vial_no value
+temp_el_c <- left_join(temp_el_c, legend_c, by = "vial_no")
+temp_el_5d <- left_join(temp_el_5d, legend_5d, by = "vial_no")
+temp_ml_c <- left_join(temp_ml_c, legend_c, by = "vial_no")
+temp_ml_5d <- left_join(temp_ml_5d, legend_5d, by = "vial_no")
+temp_ll_c <- left_join(temp_ll_c, legend_c, by = "vial_no")
+temp_ll_5d <- left_join(temp_ll_5d, legend_5d, by = "vial_no")
+
+## get rid of unneeded columns
+keeps <- c("vial_no", "daily_activity", "treatment", "genotype", "sex")
+temp_el_c <- temp_el_c[keeps]
+temp_el_5d <- temp_el_5d[keeps]
+temp_ml_c <- temp_ml_c[keeps]
+temp_ml_5d <- temp_ml_5d[keeps]
+temp_ll_c <- temp_ll_c[keeps]
+temp_ll_5d <- temp_ll_5d[keeps]
+
+## add a column with the timepoint value
+temp_el_c$age = "7"
+temp_el_5d$age = "7"
+temp_ml_c$age = "31"
+temp_ml_5d$age = "31"
+temp_ll_c$age = "55"
+temp_ll_5d$age = "55"
+##adjust class of factors
+temp_el_c$age = as.factor(temp_el_c$age)
+temp_el_5d$age = as.factor(temp_el_5d$age)
+temp_ml_c$age = as.factor(temp_ml_c$age)
+temp_ml_5d$age = as.factor(temp_ml_5d$age)
+temp_ll_c$age = as.factor(temp_ll_c$age)
+temp_ll_5d$age = as.factor(temp_ll_5d$age)
+temp_el_c$sex = as.factor(temp_el_c$sex)
+temp_el_5d$sex = as.factor(temp_el_5d$sex)
+temp_ml_c$sex = as.factor(temp_ml_c$sex)
+temp_ml_5d$sex = as.factor(temp_ml_5d$sex)
+temp_ll_c$sex = as.factor(temp_ll_c$sex)
+temp_ll_5d$sex = as.factor(temp_ll_5d$sex)
+temp_el_c$treatment = as.factor(temp_el_c$treatment)
+temp_el_5d$treatment = as.factor(temp_el_5d$treatment)
+temp_ml_c$treatment = as.factor(temp_ml_c$treatment)
+temp_ml_5d$treatment = as.factor(temp_ml_5d$treatment)
+temp_ll_c$treatment = as.factor(temp_ll_c$treatment)
+temp_ll_5d$treatment = as.factor(temp_ll_5d$treatment)
+## combine the temp_treatments into one master per timepoint
+master_5d_786_el <- rbind(temp_el_c, temp_el_5d)
+master_5d_786_ml <- rbind(temp_ml_c, temp_ml_5d)
+master_5d_786_ll <- rbind(temp_ll_c, temp_ll_5d)
+
+##remove all variables before working through another experiment
+rm(list = ls(pattern = "^temp"))
+
+## loading data frames for DAM data on the 852 5-day experiment
+## set file name
+temp_filename <- "852_5D.C_v2.xlsx"
+temp_genotype <- "852"
+temp_treatment <- "5d"
+## load the normalized data into a dataframe for each timepoint/temp_treatment
+temp_el_c <- read_excel(temp_filename, sheet = "el_c_norm")
+temp_el_5d <- read_excel(temp_filename, sheet = "el_5d_norm")
+temp_ml_c <- read_excel(temp_filename, sheet = "ml_c_norm")
+temp_ml_5d <- read_excel(temp_filename, sheet = "ml_5d_norm")
+temp_ll_c <- read_excel(temp_filename, sheet = "ll_c_norm")
+temp_ll_5d <- read_excel(temp_filename, sheet = "ll_5d_norm")
+## load the legends
+legend_el <- read_excel(temp_filename, sheet = "legend_el")
+legend_el$vial_no <- as.factor(legend_el$vial_no)
+legend_c <- read_excel(temp_filename, sheet = "legend_c")
+legend_c$vial_no <- as.factor(legend_c$vial_no)
+legend_5d <- read_excel(temp_filename, sheet = "legend_5d")
+legend_5d$vial_no <- as.factor(legend_5d$vial_no)
+## trim off first 60 minutes
+temp_el_c <- temp_el_c[-c(1:12),]
+temp_el_5d <- temp_el_5d[-c(1:12),]
+temp_ml_c <- temp_ml_c[-c(1:12),]
+temp_ml_5d <- temp_ml_5d[-c(1:12),]
+temp_ll_c <- temp_ll_c[-c(1:12),]
+temp_ll_5d <- temp_ll_5d[-c(1:12),]
+
+## pull out the first 24 hours after trimming
+temp_el_c <- temp_el_c[-c(289:nrow(temp_el_c)),]
+temp_el_5d <- temp_el_5d[-c(289:nrow(temp_el_5d)),]
+temp_ml_c <- temp_ml_c[-c(289:nrow(temp_ml_c)),]
+temp_ml_5d <- temp_ml_5d[-c(289:nrow(temp_ml_5d)),]
+temp_ll_c <- temp_ll_c[-c(289:nrow(temp_ll_c)),]
+temp_ll_5d <- temp_ll_5d[-c(289:nrow(temp_ll_5d)),]
+
+## convert to data frame
+temp_el_c <- as.data.frame(temp_el_c)
+temp_el_5d <- as.data.frame(temp_el_5d)
+temp_ml_c <- as.data.frame(temp_ml_c)
+temp_ml_5d <- as.data.frame(temp_ml_5d)
+temp_ll_c <- as.data.frame(temp_ll_c)
+temp_ll_5d <- as.data.frame(temp_ll_5d)
+
+## use the melt function to convert to long format
+temp_el_c <- melt(temp_el_c, id.vars = c("index", "date", "time"), 
+             measure.vars = c("2", "4", "5", "6", "7", "13", "18", "21"))
+temp_el_5d <- melt(temp_el_5d, id.vars = c("index", "date", "time"), 
+              measure.vars = c("3", "10", "11", "12", "15","19", "20", "22"))
+temp_ml_c <- melt(temp_ml_c, id.vars = c("index", "date", "time"), 
+             measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                              "9", "10", "11", "12", "13", "14", "15",
+                              "16", "17", "18", "19", "20", "21", "22",
+                              "23", "24", "25", "26", "27", "28", "29", 
+                              "30"))
+temp_ml_5d <- melt(temp_ml_5d, id.vars = c("index", "date", "time"), 
+              measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                               "9", "10", "11", "12", "13", "14", "15",
+                               "16", "17", "18", "19", "20", "21", "22",
+                               "23", "24", "25", "26", "27", "28", "29", 
+                               "30"))
+temp_ll_c <- melt(temp_ll_c, id.vars = c("index", "date", "time"), 
+             measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                              "9", "10", "11", "12", "13", "14", "15",
+                              "16", "17", "18", "19", "20", "21", "22",
+                              "23", "24", "25", "26", "27", "28", "29", 
+                              "30"))
+temp_ll_5d <- melt(temp_ll_5d, id.vars = c("index", "date", "time"), 
+              measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                               "9", "10", "11", "12", "13", "14", "15",
+                               "16", "17", "18", "19", "20", "21", "22",
+                               "23", "24", "25", "26", "27", "28", "29", 
+                               "30"))
+
+#after data is in long format, sum the 5-minute intervals into one daily total
+temp_el_c <- aggregate(temp_el_c$value, by=list(vial_no=temp_el_c$variable), FUN=sum)
+temp_el_5d <- aggregate(temp_el_5d$value, by=list(vial_no=temp_el_5d$variable), FUN=sum)
+temp_ml_c <- aggregate(temp_ml_c$value, by=list(vial_no=temp_ml_c$variable), FUN=sum)
+temp_ml_5d <- aggregate(temp_ml_5d$value, by=list(vial_no=temp_ml_5d$variable), FUN=sum)
+temp_ll_c <- aggregate(temp_ll_c$value, by=list(vial_no=temp_ll_c$variable), FUN=sum)
+temp_ll_5d <- aggregate(temp_ll_5d$value, by=list(vial_no=temp_ll_5d$variable), FUN=sum)
+
+
+## rename columns from variable and value
+colnames(temp_el_c) <- c("vial_no", "daily_activity")
+colnames(temp_el_5d) <- c("vial_no", "daily_activity")
+colnames(temp_ml_c) <- c("vial_no", "daily_activity")
+colnames(temp_ml_5d) <- c("vial_no", "daily_activity")
+colnames(temp_ll_c) <- c("vial_no", "daily_activity")
+colnames(temp_ll_5d) <- c("vial_no", "daily_activity")  
+
+## unblind using the legends- specific to temp_treatment- on the vial_no value
+temp_el_c <- left_join(temp_el_c, legend_el, by = "vial_no")
+temp_el_5d <- left_join(temp_el_5d, legend_el, by = "vial_no")
+temp_ml_c <- left_join(temp_ml_c, legend_c, by = "vial_no")
+temp_ml_5d <- left_join(temp_ml_5d, legend_5d, by = "vial_no")
+temp_ll_c <- left_join(temp_ll_c, legend_c, by = "vial_no")
+temp_ll_5d <- left_join(temp_ll_5d, legend_5d, by = "vial_no")
+
+## get rid of unneeded columns
+keeps <- c("vial_no", "daily_activity", "treatment", "genotype", "sex")
+temp_el_c <- temp_el_c[keeps]
+temp_el_5d <- temp_el_5d[keeps]
+temp_ml_c <- temp_ml_c[keeps]
+temp_ml_5d <- temp_ml_5d[keeps]
+temp_ll_c <- temp_ll_c[keeps]
+temp_ll_5d <- temp_ll_5d[keeps]
+
+## add a column with the timepoint value
+temp_el_c$age = "13"
+temp_el_5d$age = "13"
+temp_ml_c$age = "30"
+temp_ml_5d$age = "30"
+temp_ll_c$age = "54"
+temp_ll_5d$age = "54"
+##adjust class of factors
+temp_el_c$age = as.factor(temp_el_c$age)
+temp_el_5d$age = as.factor(temp_el_5d$age)
+temp_ml_c$age = as.factor(temp_ml_c$age)
+temp_ml_5d$age = as.factor(temp_ml_5d$age)
+temp_ll_c$age = as.factor(temp_ll_c$age)
+temp_ll_5d$age = as.factor(temp_ll_5d$age)
+temp_el_c$sex = as.factor(temp_el_c$sex)
+temp_el_5d$sex = as.factor(temp_el_5d$sex)
+temp_ml_c$sex = as.factor(temp_ml_c$sex)
+temp_ml_5d$sex = as.factor(temp_ml_5d$sex)
+temp_ll_c$sex = as.factor(temp_ll_c$sex)
+temp_ll_5d$sex = as.factor(temp_ll_5d$sex)
+temp_el_c$treatment = as.factor(temp_el_c$treatment)
+temp_el_5d$treatment = as.factor(temp_el_5d$treatment)
+temp_ml_c$treatment = as.factor(temp_ml_c$treatment)
+temp_ml_5d$treatment = as.factor(temp_ml_5d$treatment)
+temp_ll_c$treatment = as.factor(temp_ll_c$treatment)
+temp_ll_5d$treatment = as.factor(temp_ll_5d$treatment)
+## combine the temp_treatments into one master per timepoint
+master_5d_852_el <- rbind(temp_el_c, temp_el_5d)
+master_5d_852_ml <- rbind(temp_ml_c, temp_ml_5d)
+master_5d_852_ll <- rbind(temp_ll_c, temp_ll_5d)
+
+##remove all variables before working through another experiment
+rm(list = ls(pattern = "^temp"))
+
+## loading data frames for DAM data on the 301 20-day experiment
+## set file name
+temp_filename <- "301_20D.C.xlsx"
+temp_genotype <- "301"
+temp_treatment <- "20d"
+## load the normalized data into a dataframe for each timepoint/temp_treatment
+## Note no late life timepoint for this experiment
+temp_el_c <- read_excel(temp_filename, sheet = "el_c_norm")
+el_20d <- read_excel(temp_filename, sheet = "el_20d_norm")
+temp_ml_c <- read_excel(temp_filename, sheet = "ml_c_norm")
+ml_20d <- read_excel(temp_filename, sheet = "ml_20d_norm")
+## load the legend
+legend_c <- read_excel(temp_filename, sheet = "legend_c")
+legend_c$vial_no <- as.factor(legend_c$vial_no)
+legend_20d <- read_excel(temp_filename, sheet = "legend_20d")
+legend_20d$vial_no <- as.factor(legend_20d$vial_no)
+## trim off first 60 minutes
+temp_el_c <- temp_el_c[-c(1:12),]
+el_20d <- el_20d[-c(1:12),]
+temp_ml_c <- temp_ml_c[-c(1:12),]
+ml_20d <- ml_20d[-c(1:12),]
+
+## pull out the first 24 hours after trimming
+temp_el_c <- temp_el_c[-c(289:nrow(temp_el_c)),]
+el_20d <- el_20d[-c(289:nrow(el_20d)),]
+temp_ml_c <- temp_ml_c[-c(289:nrow(temp_ml_c)),]
+ml_20d <- ml_20d[-c(289:nrow(ml_20d)),]
+
+## convert to data frame
+temp_el_c <- as.data.frame(temp_el_c)
+el_20d <- as.data.frame(el_20d)
+temp_ml_c <- as.data.frame(temp_ml_c)
+ml_20d <- as.data.frame(ml_20d)
+
+## use the melt function to convert to long format
+temp_el_c <- melt(temp_el_c, id.vars = c("index", "date", "time"), 
+             measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                              "9", "10", "11", "12", "13", "14", "15",
+                              "16", "17", "18", "19", "20", "21", "22",
+                              "23", "24", "25", "26", "27", "28", "29", 
+                              "30"))
+el_20d <- melt(el_20d, id.vars = c("index", "date", "time"), 
+               measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                                "9", "10", "11", "12", "13", "14", "15",
+                                "16", "17", "18", "19", "20", "21", "22",
+                                "23", "24", "25", "26", "27", "28", "29", 
+                                "30"))
+temp_ml_c <- melt(temp_ml_c, id.vars = c("index", "date", "time"), 
+             measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                              "9", "10", "11", "12", "13", "14", "15",
+                              "16", "17", "18", "19", "20", "21", "22",
+                              "23", "24", "25", "26", "27", "28", "29", 
+                              "30"))
+ml_20d <- melt(ml_20d, id.vars = c("index", "date", "time"), 
+               measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                                "9", "10", "11", "12", "13", "14", "15",
+                                "16", "17", "18", "19", "20", "21", "22",
+                                "23", "24", "25", "26", "27", "28", "29", 
+                                "30"))
+
+#after data is in long format, sum the 5-minute intervals into one daily total
+temp_el_c <- aggregate(temp_el_c$value, by=list(vial_no=temp_el_c$variable), FUN=sum)
+el_20d <- aggregate(el_20d$value, by=list(vial_no=el_20d$variable), FUN=sum)
+temp_ml_c <- aggregate(temp_ml_c$value, by=list(vial_no=temp_ml_c$variable), FUN=sum)
+ml_20d <- aggregate(ml_20d$value, by=list(vial_no=ml_20d$variable), FUN=sum)
+
+## rename columns from variable and value
+colnames(temp_el_c) <- c("vial_no", "daily_activity")
+colnames(el_20d) <- c("vial_no", "daily_activity")
+colnames(temp_ml_c) <- c("vial_no", "daily_activity")
+colnames(ml_20d) <- c("vial_no", "daily_activity")
+## unblind using the legends- specific to temp_treatment- on the vial_no value
+temp_el_c <- left_join(temp_el_c, legend_c, by = "vial_no")
+el_20d <- left_join(el_20d, legend_20d, by = "vial_no")
+temp_ml_c <- left_join(temp_ml_c, legend_c, by = "vial_no")
+ml_20d <- left_join(ml_20d, legend_20d, by = "vial_no")
+## get rid of unneeded columns
+keeps <- c("vial_no", "daily_activity", "treatment", "genotype", "sex")
+temp_el_c <- temp_el_c[keeps]
+el_20d <- el_20d[keeps]
+temp_ml_c <- temp_ml_c[keeps]
+ml_20d <- ml_20d[keeps]
+## add a column with the timepoint value
+temp_el_c$age = "25"
+el_20d$age = "25"
+temp_ml_c$age = "35"
+ml_20d$age = "35"
+##adjust class of factors
+temp_el_c$age = as.factor(temp_el_c$age)
+el_20d$age = as.factor(el_20d$age)
+temp_ml_c$age = as.factor(temp_ml_c$age)
+ml_20d$age = as.factor(ml_20d$age)
+temp_el_c$sex = as.factor(temp_el_c$sex)
+el_20d$sex = as.factor(el_20d$sex)
+temp_ml_c$sex = as.factor(temp_ml_c$sex)
+ml_20d$sex = as.factor(ml_20d$sex)
+temp_el_c$treatment = as.factor(temp_el_c$treatment)
+el_20d$treatment = as.factor(el_20d$treatment)
+temp_ml_c$treatment = as.factor(temp_ml_c$treatment)
+ml_20d$treatment = as.factor(ml_20d$treatment)
+## combine the temp_treatments into one master per timepoint
+master_20d_301_el <- rbind(temp_el_c, el_20d)
+master_20d_301_ml <- rbind(temp_ml_c, ml_20d)
+
+##remove all variables before working through another experiment
+rm(list = ls(pattern = "^temp"))
+
+## loading data frames for DAM data on the 304 20-day experiment
+## set file name
+temp_filename <- "304_20D.C.xlsx"
+temp_genotype <- "304"
+temp_treatment <- "20d"
+## load the normalized data into a dataframe for each timepoint/temp_treatment
+temp_el_c <- read_excel(temp_filename, sheet = "el_c_norm")
+el_20d <- read_excel(temp_filename, sheet = "el_20d_norm")
+temp_ml_c <- read_excel(temp_filename, sheet = "ml_c_norm")
+ml_20d <- read_excel(temp_filename, sheet = "ml_20d_norm")
+temp_ll_c <- read_excel(temp_filename, sheet = "ll_c_norm")
+ll_20d <- read_excel(temp_filename, sheet = "ll_20d_norm")
+## load the legend
+legend_c <- read_excel(temp_filename, sheet = "legend_c")
+legend_c$vial_no <- as.factor(legend_c$vial_no)
+legend_20d <- read_excel(temp_filename, sheet = "legend_20d")
+legend_20d$vial_no <- as.factor(legend_20d$vial_no)
+## trim off first 60 minutes
+temp_el_c <- temp_el_c[-c(1:12),]
+el_20d <- el_20d[-c(1:12),]
+temp_ml_c <- temp_ml_c[-c(1:12),]
+ml_20d <- ml_20d[-c(1:12),]
+temp_ll_c <- temp_ll_c[-c(1:12),]
+ll_20d <- ll_20d[-c(1:12),]
+
+## pull out the first 24 hours after trimming
+temp_el_c <- temp_el_c[-c(289:nrow(temp_el_c)),]
+el_20d <- el_20d[-c(289:nrow(el_20d)),]
+temp_ml_c <- temp_ml_c[-c(289:nrow(temp_ml_c)),]
+ml_20d <- ml_20d[-c(289:nrow(ml_20d)),]
+temp_ll_c <- temp_ll_c[-c(289:nrow(temp_ll_c)),]
+ll_20d <- ll_20d[-c(289:nrow(ll_20d)),]
+
+## convert to data frame
+temp_el_c <- as.data.frame(temp_el_c)
+el_20d <- as.data.frame(el_20d)
+temp_ml_c <- as.data.frame(temp_ml_c)
+ml_20d <- as.data.frame(ml_20d)
+temp_ll_c <- as.data.frame(temp_ll_c)
+ll_20d <- as.data.frame(ll_20d)
+
+## use the melt function to convert to long format
+temp_el_c <- melt(temp_el_c, id.vars = c("index", "date", "time"), 
+             measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                              "9", "10", "11", "12", "13", "14", "15",
+                              "16", "17", "18", "19", "20", "21", "22",
+                              "23", "24", "25", "26", "27", "28", "29", 
+                              "30"))
+el_20d <- melt(el_20d, id.vars = c("index", "date", "time"), 
+               measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                                "9", "10", "11", "12", "13", "14", "15",
+                                "16", "17", "18", "19", "20", "21", "22",
+                                "23", "24", "25", "26", "27", "28", "29", 
+                                "30"))
+temp_ml_c <- melt(temp_ml_c, id.vars = c("index", "date", "time"), 
+             measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                              "9", "10", "11", "12", "13", "14", "15",
+                              "16", "17", "18", "19", "20", "21", "22",
+                              "23", "24", "25", "26", "27", "28", "29", 
+                              "30"))
+ml_20d <- melt(ml_20d, id.vars = c("index", "date", "time"), 
+               measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                                "9", "10", "11", "12", "13", "14", "15",
+                                "16", "17", "18", "19", "20", "21", "22",
+                                "23", "24", "25", "26", "27", "28", "29", 
+                                "30"))
+temp_ll_c <- melt(temp_ll_c, id.vars = c("index", "date", "time"), 
+             measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                              "9", "10", "11", "12", "13", "14", "15",
+                              "16", "17", "18", "19", "20", "21", "22",
+                              "23", "24", "25", "26", "27", "28", "29", 
+                              "30"))
+ll_20d <- melt(ll_20d, id.vars = c("index", "date", "time"), 
+               measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                                "9", "10", "11", "12", "13", "14", "15",
+                                "16", "17", "18", "19", "20", "21", "22",
+                                "23", "24", "25", "26", "27", "28", "29", 
+                                "30"))
+
+#after data is in long format, sum the 5-minute intervals into one daily total
+temp_el_c <- aggregate(temp_el_c$value, by=list(vial_no=temp_el_c$variable), FUN=sum)
+el_20d <- aggregate(el_20d$value, by=list(vial_no=el_20d$variable), FUN=sum)
+temp_ml_c <- aggregate(temp_ml_c$value, by=list(vial_no=temp_ml_c$variable), FUN=sum)
+ml_20d <- aggregate(ml_20d$value, by=list(vial_no=ml_20d$variable), FUN=sum)
+temp_ll_c <- aggregate(temp_ll_c$value, by=list(vial_no=temp_ll_c$variable), FUN=sum)
+ll_20d <- aggregate(ll_20d$value, by=list(vial_no=ll_20d$variable), FUN=sum)
+
+
+## rename columns from variable and value
+colnames(temp_el_c) <- c("vial_no", "daily_activity")
+colnames(el_20d) <- c("vial_no", "daily_activity")
+colnames(temp_ml_c) <- c("vial_no", "daily_activity")
+colnames(ml_20d) <- c("vial_no", "daily_activity")
+colnames(temp_ll_c) <- c("vial_no", "daily_activity")
+colnames(ll_20d) <- c("vial_no", "daily_activity")  
+
+## unblind using the legends- specific to temp_treatment- on the vial_no value
+temp_el_c <- left_join(temp_el_c, legend_c, by = "vial_no")
+el_20d <- left_join(el_20d, legend_20d, by = "vial_no")
+temp_ml_c <- left_join(temp_ml_c, legend_c, by = "vial_no")
+ml_20d <- left_join(ml_20d, legend_20d, by = "vial_no")
+temp_ll_c <- left_join(temp_ll_c, legend_c, by = "vial_no")
+ll_20d <- left_join(ll_20d, legend_20d, by = "vial_no")
+
+## get rid of unneeded columns
+keeps <- c("vial_no", "daily_activity", "treatment", "genotype", "sex")
+temp_el_c <- temp_el_c[keeps]
+el_20d <- el_20d[keeps]
+temp_ml_c <- temp_ml_c[keeps]
+ml_20d <- ml_20d[keeps]
+temp_ll_c <- temp_ll_c[keeps]
+ll_20d <- ll_20d[keeps]
+
+## add a column with the timepoint value
+temp_el_c$age = "24"
+el_20d$age = "24"
+temp_ml_c$age = "36"
+ml_20d$age = "36"
+temp_ll_c$age = "54"
+ll_20d$age = "54"
+##adjust class of factors
+temp_el_c$age = as.factor(temp_el_c$age)
+el_20d$age = as.factor(el_20d$age)
+temp_ml_c$age = as.factor(temp_ml_c$age)
+ml_20d$age = as.factor(ml_20d$age)
+temp_ll_c$age = as.factor(temp_ll_c$age)
+ll_20d$age = as.factor(ll_20d$age)
+temp_el_c$sex = as.factor(temp_el_c$sex)
+el_20d$sex = as.factor(el_20d$sex)
+temp_ml_c$sex = as.factor(temp_ml_c$sex)
+ml_20d$sex = as.factor(ml_20d$sex)
+temp_ll_c$sex = as.factor(temp_ll_c$sex)
+ll_20d$sex = as.factor(ll_20d$sex)
+temp_el_c$treatment = as.factor(temp_el_c$treatment)
+el_20d$treatment = as.factor(el_20d$treatment)
+temp_ml_c$treatment = as.factor(temp_ml_c$treatment)
+ml_20d$treatment = as.factor(ml_20d$treatment)
+temp_ll_c$treatment = as.factor(temp_ll_c$treatment)
+ll_20d$treatment = as.factor(ll_20d$treatment)
+## combine the temp_treatments into one master per timepoint
+master_20d_304_el <- rbind(temp_el_c, el_20d)
+master_20d_304_ml <- rbind(temp_ml_c, ml_20d)
+master_20d_304_ll <- rbind(temp_ll_c, ll_20d)
+
+##remove all variables before working through another experiment
+rm(list = ls(pattern = "^temp"))
+
+## loading data frames for DAM data on the 786 20-day experiment
+## set file name
+temp_filename <- "786_20D.C.xlsx"
+temp_genotype <- "786"
+temp_treatment <- "20d"
+## load the normalized data into a dataframe for each timepoint/temp_treatment
+## there is no latelife timepoint in this experiment
+temp_el_c <- read_excel(temp_filename, sheet = "el_c_norm")
+el_20d <- read_excel(temp_filename, sheet = "el_20d_norm")
+temp_ml_c <- read_excel(temp_filename, sheet = "ml_c_norm")
+ml_20d <- read_excel(temp_filename, sheet = "ml_20d_norm")
+## load the legend
+legend_c <- read_excel(temp_filename, sheet = "legend_c")
+legend_c$vial_no <- as.factor(legend_c$vial_no)
+legend_20d <- read_excel(temp_filename, sheet = "legend_20d")
+legend_20d$vial_no <- as.factor(legend_20d$vial_no)
+## trim off first 60 minutes
+temp_el_c <- temp_el_c[-c(1:12),]
+el_20d <- el_20d[-c(1:12),]
+temp_ml_c <- temp_ml_c[-c(1:12),]
+ml_20d <- ml_20d[-c(1:12),]
+
+## pull out the first 24 hours after trimming
+temp_el_c <- temp_el_c[-c(289:nrow(temp_el_c)),]
+el_20d <- el_20d[-c(289:nrow(el_20d)),]
+temp_ml_c <- temp_ml_c[-c(289:nrow(temp_ml_c)),]
+ml_20d <- ml_20d[-c(289:nrow(ml_20d)),]
+
+## convert to data frame
+temp_el_c <- as.data.frame(temp_el_c)
+el_20d <- as.data.frame(el_20d)
+temp_ml_c <- as.data.frame(temp_ml_c)
+ml_20d <- as.data.frame(ml_20d)
+
+## use the melt function to convert to long format
+temp_el_c <- melt(temp_el_c, id.vars = c("index", "date", "time"), 
+             measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                              "9", "10", "11", "12", "13", "14", "15",
+                              "16", "17", "18", "19", "20", "21", "22",
+                              "23", "24", "25", "26", "27", "28", "29", 
+                              "30"))
+el_20d <- melt(el_20d, id.vars = c("index", "date", "time"), 
+               measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                                "9", "10", "11", "12", "13", "14", "15",
+                                "16", "17", "18", "19", "20", "21", "22",
+                                "23", "24", "25", "26", "27", "28", "29", 
+                                "30"))
+temp_ml_c <- melt(temp_ml_c, id.vars = c("index", "date", "time"), 
+             measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                              "9", "10", "11", "12", "13", "14", "15",
+                              "16", "17", "18", "19", "20", "21", "22",
+                              "23", "24", "25", "26", "27", "28", "29", 
+                              "30"))
+ml_20d <- melt(ml_20d, id.vars = c("index", "date", "time"), 
+               measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                                "9", "10", "11", "12", "13", "14", "15",
+                                "16", "17", "18", "19", "20", "21", "22",
+                                "23", "24", "25", "26", "27", "28", "29", 
+                                "30"))
+
+#after data is in long format, sum the 5-minute intervals into one daily total
+temp_el_c <- aggregate(temp_el_c$value, by=list(vial_no=temp_el_c$variable), FUN=sum)
+el_20d <- aggregate(el_20d$value, by=list(vial_no=el_20d$variable), FUN=sum)
+temp_ml_c <- aggregate(temp_ml_c$value, by=list(vial_no=temp_ml_c$variable), FUN=sum)
+ml_20d <- aggregate(ml_20d$value, by=list(vial_no=ml_20d$variable), FUN=sum)
+
+## rename columns from variable and value
+colnames(temp_el_c) <- c("vial_no", "daily_activity")
+colnames(el_20d) <- c("vial_no", "daily_activity")
+colnames(temp_ml_c) <- c("vial_no", "daily_activity")
+colnames(ml_20d) <- c("vial_no", "daily_activity")
+
+## unblind using the legends- specific to temp_treatment- on the vial_no value
+temp_el_c <- left_join(temp_el_c, legend_c, by = "vial_no")
+el_20d <- left_join(el_20d, legend_20d, by = "vial_no")
+temp_ml_c <- left_join(temp_ml_c, legend_c, by = "vial_no")
+ml_20d <- left_join(ml_20d, legend_20d, by = "vial_no")
+## get rid of unneeded columns
+keeps <- c("vial_no", "daily_activity", "treatment", "genotype", "sex")
+temp_el_c <- temp_el_c[keeps]
+el_20d <- el_20d[keeps]
+temp_ml_c <- temp_ml_c[keeps]
+ml_20d <- ml_20d[keeps]
+## add a column with the timepoint value
+temp_el_c$age = "25"
+el_20d$age = "25"
+temp_ml_c$age = "35"
+ml_20d$age = "35"
+
+##adjust class of factors
+temp_el_c$age = as.factor(temp_el_c$age)
+el_20d$age = as.factor(el_20d$age)
+temp_ml_c$age = as.factor(temp_ml_c$age)
+ml_20d$age = as.factor(ml_20d$age)
+temp_el_c$sex = as.factor(temp_el_c$sex)
+el_20d$sex = as.factor(el_20d$sex)
+temp_ml_c$sex = as.factor(temp_ml_c$sex)
+ml_20d$sex = as.factor(ml_20d$sex)
+temp_el_c$treatment = as.factor(temp_el_c$treatment)
+el_20d$treatment = as.factor(el_20d$treatment)
+temp_ml_c$treatment = as.factor(temp_ml_c$treatment)
+ml_20d$treatment = as.factor(ml_20d$treatment)
+## combine the temp_treatments into one master per timepoint
+master_20d_786_el <- rbind(temp_el_c, el_20d)
+master_20d_786_ml <- rbind(temp_ml_c, ml_20d)
+
+##remove all variables before working through another experiment
+rm(list = ls(pattern = "^temp"))
+
+## loading data frames for DAM data on the 852 20-day experiment
+## set file name
+temp_filename <- "852_20D.C.xlsx"
+temp_genotype <- "852"
+temp_treatment <- "20d"
+## load the normalized data into a dataframe for each timepoint/temp_treatment
+temp_el_c <- read_excel(temp_filename, sheet = "el_c_norm")
+el_20d <- read_excel(temp_filename, sheet = "el_20d_norm")
+temp_ml_c <- read_excel(temp_filename, sheet = "ml_c_norm")
+ml_20d <- read_excel(temp_filename, sheet = "ml_20d_norm")
+temp_ll_c <- read_excel(temp_filename, sheet = "ll_c_norm")
+ll_20d <- read_excel(temp_filename, sheet = "ll_20d_norm")
+## load the legend
+legend_c <- read_excel(temp_filename, sheet = "legend_c")
+legend_c$vial_no <- as.factor(legend_c$vial_no)
+legend_20d <- read_excel(temp_filename, sheet = "legend_20d")
+legend_20d$vial_no <- as.factor(legend_20d$vial_no)
+## trim off first 60 minutes
+temp_el_c <- temp_el_c[-c(1:12),]
+el_20d <- el_20d[-c(1:12),]
+temp_ml_c <- temp_ml_c[-c(1:12),]
+ml_20d <- ml_20d[-c(1:12),]
+temp_ll_c <- temp_ll_c[-c(1:12),]
+ll_20d <- ll_20d[-c(1:12),]
+
+## pull out the first 24 hours after trimming
+temp_el_c <- temp_el_c[-c(289:nrow(temp_el_c)),]
+el_20d <- el_20d[-c(289:nrow(el_20d)),]
+temp_ml_c <- temp_ml_c[-c(289:nrow(temp_ml_c)),]
+ml_20d <- ml_20d[-c(289:nrow(ml_20d)),]
+temp_ll_c <- temp_ll_c[-c(289:nrow(temp_ll_c)),]
+ll_20d <- ll_20d[-c(289:nrow(ll_20d)),]
+
+## convert to data frame
+temp_el_c <- as.data.frame(temp_el_c)
+el_20d <- as.data.frame(el_20d)
+temp_ml_c <- as.data.frame(temp_ml_c)
+ml_20d <- as.data.frame(ml_20d)
+temp_ll_c <- as.data.frame(temp_ll_c)
+ll_20d <- as.data.frame(ll_20d)
+
+## use the melt function to convert to long format
+temp_el_c <- melt(temp_el_c, id.vars = c("index", "date", "time"), 
+             measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                              "9", "10", "11", "12", "13", "14", "15",
+                              "16", "17", "18", "19", "20", "21", "22",
+                              "23", "24", "25", "26", "27", "28", "29", 
+                              "30"))
+el_20d <- melt(el_20d, id.vars = c("index", "date", "time"), 
+               measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                                "9", "10", "11", "12", "13", "14", "15",
+                                "16", "17", "18", "19", "20", "21", "22",
+                                "23", "24", "25", "26", "27", "28", "29", 
+                                "30"))
+temp_ml_c <- melt(temp_ml_c, id.vars = c("index", "date", "time"), 
+             measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                              "9", "10", "11", "12", "13", "14", "15",
+                              "16", "17", "18", "19", "20", "21", "22",
+                              "23", "24", "25", "26", "27", "28", "29", 
+                              "30"))
+ml_20d <- melt(ml_20d, id.vars = c("index", "date", "time"), 
+               measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                                "9", "10", "11", "12", "13", "14", "15",
+                                "16", "17", "18", "19", "20", "21", "22",
+                                "23", "24", "25", "26", "27", "28", "29", 
+                                "30"))
+temp_ll_c <- melt(temp_ll_c, id.vars = c("index", "date", "time"), 
+             measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                              "9", "10", "11", "12", "13", "14", "15",
+                              "16", "17", "18", "19", "20", "21", "22",
+                              "23", "24", "25", "26", "27", "28", "29", 
+                              "30"))
+ll_20d <- melt(ll_20d, id.vars = c("index", "date", "time"), 
+               measure.vars = c("1", "2", "3", "4", "5", "6", "7", "8",
+                                "9", "10", "11", "12", "13", "14", "15",
+                                "16", "17", "18", "19", "20", "21", "22",
+                                "23", "24", "25", "26", "27", "28", "29", 
+                                "30"))
+
+#after data is in long format, sum the 5-minute intervals into one daily total
+temp_el_c <- aggregate(temp_el_c$value, by=list(vial_no=temp_el_c$variable), FUN=sum)
+el_20d <- aggregate(el_20d$value, by=list(vial_no=el_20d$variable), FUN=sum)
+temp_ml_c <- aggregate(temp_ml_c$value, by=list(vial_no=temp_ml_c$variable), FUN=sum)
+ml_20d <- aggregate(ml_20d$value, by=list(vial_no=ml_20d$variable), FUN=sum)
+temp_ll_c <- aggregate(temp_ll_c$value, by=list(vial_no=temp_ll_c$variable), FUN=sum)
+ll_20d <- aggregate(ll_20d$value, by=list(vial_no=ll_20d$variable), FUN=sum)
+
+
+## rename columns from variable and value
+colnames(temp_el_c) <- c("vial_no", "daily_activity")
+colnames(el_20d) <- c("vial_no", "daily_activity")
+colnames(temp_ml_c) <- c("vial_no", "daily_activity")
+colnames(ml_20d) <- c("vial_no", "daily_activity")
+colnames(temp_ll_c) <- c("vial_no", "daily_activity")
+colnames(ll_20d) <- c("vial_no", "daily_activity")  
+
+## unblind using the legends- specific to temp_treatment- on the vial_no value
+temp_el_c <- left_join(temp_el_c, legend_c, by = "vial_no")
+el_20d <- left_join(el_20d, legend_20d, by = "vial_no")
+temp_ml_c <- left_join(temp_ml_c, legend_c, by = "vial_no")
+ml_20d <- left_join(ml_20d, legend_20d, by = "vial_no")
+temp_ll_c <- left_join(temp_ll_c, legend_c, by = "vial_no")
+ll_20d <- left_join(ll_20d, legend_20d, by = "vial_no")
+
+## get rid of unneeded columns
+keeps <- c("vial_no", "daily_activity", "treatment", "genotype", "sex")
+temp_el_c <- temp_el_c[keeps]
+el_20d <- el_20d[keeps]
+temp_ml_c <- temp_ml_c[keeps]
+ml_20d <- ml_20d[keeps]
+temp_ll_c <- temp_ll_c[keeps]
+ll_20d <- ll_20d[keeps]
+
+## add a column with the timepoint value
+temp_el_c$age = "23"
+el_20d$age = "23"
+temp_ml_c$age = "35"
+ml_20d$age = "35"
+temp_ll_c$age = "55"
+ll_20d$age = "55"
+##adjust class of factors
+temp_el_c$age = as.factor(temp_el_c$age)
+el_20d$age = as.factor(el_20d$age)
+temp_ml_c$age = as.factor(temp_ml_c$age)
+ml_20d$age = as.factor(ml_20d$age)
+temp_ll_c$age = as.factor(temp_ll_c$age)
+ll_20d$age = as.factor(ll_20d$age)
+temp_el_c$sex = as.factor(temp_el_c$sex)
+el_20d$sex = as.factor(el_20d$sex)
+temp_ml_c$sex = as.factor(temp_ml_c$sex)
+ml_20d$sex = as.factor(ml_20d$sex)
+temp_ll_c$sex = as.factor(temp_ll_c$sex)
+ll_20d$sex = as.factor(ll_20d$sex)
+temp_el_c$treatment = as.factor(temp_el_c$treatment)
+el_20d$treatment = as.factor(el_20d$treatment)
+temp_ml_c$treatment = as.factor(temp_ml_c$treatment)
+ml_20d$treatment = as.factor(ml_20d$treatment)
+temp_ll_c$treatment = as.factor(temp_ll_c$treatment)
+ll_20d$treatment = as.factor(ll_20d$treatment)
+## combine the temp_treatments into one master per timepoint
+master_20d_852_el <- rbind(temp_el_c, el_20d)
+master_20d_852_ml <- rbind(temp_ml_c, ml_20d)
+master_20d_852_ll <- rbind(temp_ll_c, ll_20d)
+
+##remove all variables before working through another experiment
+rm(list = ls(pattern = "^temp"))
+
+## combine all temp_genotypes from each timepoint into one master
+master_5d_el <- rbind(master_5d_301_el, master_5d_304_el, master_5d_786_el, master_5d_852_el)
+master_5d_ml <- rbind(master_5d_304_ml, master_5d_786_ml,master_5d_852_ml)
+master_5d_ll <- rbind(master_5d_301_ll, master_5d_304_ll, master_5d_786_ll, master_5d_852_ll)
+master_20d_el <- rbind(master_20d_301_el, master_20d_304_el, master_20d_786_el, master_20d_852_el)
+master_20d_ml <- rbind(master_20d_301_ml, master_20d_304_ml, master_20d_786_ml, master_20d_852_ml)
+master_20d_ll <- rbind(master_20d_304_ll, master_20d_852_ll)
+
+
+master_5d_el$genotype <- as.factor(master_5d_el$genotype)
+master_5d_ml$genotype <- as.factor(master_5d_ml$genotype)
+master_5d_ll$genotype <- as.factor(master_5d_ll$genotype)
+master_20d_el$genotype <- as.factor(master_20d_el$genotype)
+master_20d_ml$genotype <- as.factor(master_20d_ml$genotype)
+master_20d_ll$genotype <- as.factor(master_20d_ll$genotype)
+
+## need to omit rows with NA daily_activity (the ones that had no more living flies in the vial)
+master_5d_el <- master_5d_el[complete.cases(master_5d_el), ]
+master_5d_ml <- master_5d_ml[complete.cases(master_5d_ml), ]
+master_5d_ll <- master_5d_ll[complete.cases(master_5d_ll), ]
+master_20d_el <- master_20d_el[complete.cases(master_20d_el), ]
+master_20d_ml <- master_20d_ml[complete.cases(master_20d_ml), ]
+master_20d_ll <- master_20d_ll[complete.cases(master_20d_ll), ]
+
+## add a column with the timepoint value
+master_5d_el$timepoint = "el"
+master_5d_el$timepoint <- as.factor(master_5d_el$timepoint)
+master_5d_ml$timepoint = "ml"
+master_5d_ml$timepoint <- as.factor(master_5d_ml$timepoint)
+master_5d_ll$timepoint = "ll"
+master_5d_ll$timepoint <- as.factor(master_5d_ll$timepoint)
+master_20d_el$timepoint = "el"
+master_20d_el$timepoint <- as.factor(master_20d_el$timepoint)
+master_20d_ml$timepoint = "ml"
+master_20d_ml$timepoint <- as.factor(master_20d_ml$timepoint)
+master_20d_ll$timepoint = "ll"
+master_20d_ll$timepoint <- as.factor(master_20d_ll$timepoint)
+
+master_5d <- rbind(master_5d_el, master_5d_ml, master_5d_ll)
+master_20d <- rbind(master_20d_el, master_20d_ml, master_20d_ll)
+
+## Normality tests to check for the datasets
+## results have pval < 0.05 
+shapiro.test(master_5d_el$daily_activity)
+shapiro.test(master_5d_ml$daily_activity)
+shapiro.test(master_5d_ll$daily_activity)
+shapiro.test(master_20d_el$daily_activity)
+shapiro.test(master_20d_ml$daily_activity)
+shapiro.test(master_20d_ll$daily_activity)
+
+## Aligned ranked anova on activity score
+
+model <- art(daily_activity ~ sex*genotype*treatment, data = master_5d_el)
+anova(model)
+summary(model)
+model <- art(daily_activity ~ sex*genotype*treatment, data = master_5d_ml)
+anova(model)
+summary(model)
+model <- art(daily_activity ~ sex*genotype*treatment, data = master_5d_ll)
+anova(model)
+summary(model)
+model <- art(daily_activity ~ sex*genotype*treatment, data = master_20d_el)
+anova(model)
+summary(model)
+model <- art(daily_activity ~ sex*genotype*treatment, data = master_20d_ml)
+anova(model)
+summary(model)
+model <- art(daily_activity ~ sex*genotype*treatment, data = master_20d_ll)
+anova(model)
+summary(model)
+
+
+## plot it all out in boxplots
+
+boxplot_5d <- ggplot(data = master_5d, aes(x = genotype, y = daily_activity))+
+  geom_boxplot(aes(color = treatment))+
+  geom_jitter(aes(x = genotype, y = daily_activity, color = treatment), position = position_jitterdodge(), size = 1)+
+  facet_wrap(c("timepoint", "sex"), nrow = 3)
+
+boxplot_5d + 
+  scale_color_manual(values = c("#0073C2FF","#EFC000FF"),  name = "Treatment",
+                     labels = c("Control", "5-day"))+ ylab("Total Daily Activity per Fly") + xlab("genotype")
+
+boxplot_20d <- ggplot(data = master_20d, aes(x = genotype, y = daily_activity))+
+  geom_boxplot(aes(color = treatment))+
+  geom_jitter(aes(x = genotype, y = daily_activity, color = treatment), position = position_jitterdodge(), size = 1)+
+  facet_wrap(c("timepoint", "sex"), nrow = 3)
+
+boxplot_20d + 
+  scale_color_manual(values = c("#0073C2FF","#CD534CFF"),  name = "Treatment",
+                     labels = c("Control", "20d-day"))+ ylab("Total Daily Activity per Fly") + xlab("Genotype")
+
+
+## tukey comparisons of factors for a given dataset and factor/interaction
+##declare one of the 6 datasets to investigate
+dataset <- ""
+
+#declare the factor or interaction of interest
+x <- ""
+
+
+model <- art(daily_activity ~ sex*genotype*treatment, data = dataset)
+anova(model)
+summary(model)
+options(max.print = 2000)
+marginal = art.con(model, x, adjust = "tukey")
+marginal
+
+  
+## Getting basic stats for the manuscript
+master_5d_el %>% group_by(sex, genotype, treatment) %>% 
+  summarize (mean=mean(daily_activity), SD = sd(daily_activity))
+
+master_20d_el %>% group_by(sex, genotype, treatment) %>% 
+  summarize (mean=mean(daily_activity), SD = sd(daily_activity))
+
+master_5d_ml %>% group_by(sex, genotype, treatment) %>% 
+  summarize (mean=mean(daily_activity), SD = sd(daily_activity))
+
+master_20d_ml %>% group_by(sex, genotype, treatment) %>% 
+  summarize (mean=mean(daily_activity), SD = sd(daily_activity))
+
+master_5d_ll %>% group_by(sex, genotype, treatment) %>% 
+  summarize (mean=mean(daily_activity), SD = sd(daily_activity))
+
+master_20d_ll %>% group_by(sex, genotype, treatment) %>% 
+  summarize (mean=mean(daily_activity), SD = sd(daily_activity))
+
+## Non-parametric tests
+kruskal.test(daily_activity ~ sex, data = master_5d_el)
+kruskal.test(daily_activity ~ genotype, data = master_5d_el)
+kruskal.test(daily_activity ~ treatment, data = master_5d_el)
+
+kruskal.test(daily_activity ~ sex, data = master_20d_el)
+kruskal.test(daily_activity ~ genotype, data = master_20d_el)
+kruskal.test(daily_activity ~ treatment, data = master_20d_el)
+
+kruskal.test(daily_activity ~ sex, data = master_5d_ml)
+kruskal.test(daily_activity ~ genotype, data = master_5d_ml)
+kruskal.test(daily_activity ~ treatment, data = master_5d_ml)
+
+kruskal.test(daily_activity ~ sex, data = master_20d_ml)
+kruskal.test(daily_activity ~ genotype, data = master_20d_ml)
+kruskal.test(daily_activity ~ treatment, data = master_20d_ml)
+
+kruskal.test(daily_activity ~ sex, data = master_5d_ll)
+kruskal.test(daily_activity ~ genotype, data = master_5d_ll)
+kruskal.test(daily_activity ~ treatment, data = master_5d_ll)
+
+kruskal.test(daily_activity ~ sex, data = master_20d_ll)
+kruskal.test(daily_activity ~ genotype, data = master_20d_ll)
+kruskal.test(daily_activity ~ treatment, data = master_20d_ll)
+
+
+
+## Regular ANOVA
+summary(aov(daily_activity ~ sex*genotype*treatment, data = master_5d_el))
+summary(aov(daily_activity ~ sex+genotype+treatment+sex*genotype, data = master_5d_el))
+
+summary(aov(daily_activity ~ sex*genotype*treatment, data = master_20d_el))
+summary(aov(daily_activity ~ sex+genotype+treatment+sex*genotype, data = master_20d_el))
+
+
+summary(aov(daily_activity ~ sex*genotype*treatment, data = master_5d_ml))
+summary(aov(daily_activity ~ sex+genotype+treatment+sex*genotype, data = master_5d_ml))
+
+summary(aov(daily_activity ~ sex*genotype*treatment, data = master_20d_ml))
+summary(aov(daily_activity ~ sex+genotype+treatment+sex*treatment, data = master_20d_ml))
+
+
+summary(aov(daily_activity ~ sex*genotype*treatment, data = master_5d_ll))
+summary(aov(daily_activity ~ sex+genotype+treatment+sex*genotype, data = master_5d_ll))
+
+summary(aov(daily_activity ~ sex*genotype*treatment, data = master_20d_ll))
+summary(aov(daily_activity ~ sex+genotype+treatment+sex*genotype, data = master_20d_ll))
+
