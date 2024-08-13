@@ -12,7 +12,7 @@ Data and analysis scripts associated with the Johnson et al 2024 manuscript.
 **2. Figure 2**
 
      - Data
-     - Scripts
+     - [Script](Figure2_script)
 
 
 **3. Figure 3**
