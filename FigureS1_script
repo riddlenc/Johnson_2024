@@ -1,0 +1,168 @@
+---
+title: "CAFE"
+author: "Nicole Riddle"
+date: "2024-05-22"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Installing libraries etc. 
+```{r}
+#Cleaning Environment
+rm(list=ls())
+
+library(readxl)
+library(ggplot2)
+library(ARTool)
+library(DataExplorer)
+library(tidyr)
+library(here)
+theme_set(theme_classic())
+```
+
+## Loading data
+```{r}
+data_1 <- read_excel("cafe_20230815.xlsx", sheet = "data")
+data_2 <- read_excel("cafe_20231122_norm.xlsx", sheet = "data")
+data <- rbind(data_1, data_2)
+
+data$genotype <- as.factor(data$genotype)
+data$sex <- as.factor(data$sex)
+data$timepoint <- as.factor(data$sampled_on)
+data$treatment <- as.factor(data$treatment)
+
+#Sanity checks
+summary(data_1)
+summary(data_2)
+summary(data)
+
+hist(data$total_norm_tidy)
+
+DataExplorer::create_report(data)
+```
+
+## Checking data distribution
+
+```{r}
+t1 <- subset(data, sampled_on == "t1")
+shapiro.test(t1$total_norm_tidy)
+t2 <- subset(data, sampled_on == "t2")
+shapiro.test(t2$total_norm_tidy)
+
+# Checking residuals
+model1 <- aov(total_norm_tidy ~ sex*genotype*treatment, data = t1)
+shapiro.test(model1$residuals)
+model2 <- aov(total_norm_tidy ~ sex*genotype*treatment, data = t2)
+shapiro.test(model2$residuals)
+
+
+rm("t1", "t2", "model1", "model2")
+```
+
+Data are not normally distributed, and neither are residual. Go ahead with ART ANOVA.
+
+
+## Aligned rank transformed ANOVA
+```{r}
+model <- art(total_norm_tidy ~ sex*genotype*treatment, data = subset(data, sampled_on == "t1"))
+summary(model)
+anova(model)
+rm(model)
+
+model <- art(total_norm_tidy ~ sex*genotype*treatment, data = subset(data, sampled_on == "t2"))
+summary(model)
+anova(model)
+rm(model)
+```
+ART ANOVA results in warnings again, so I will run the analysis differently, first using non-parametric Kruskal-Wallis tests, then regular ANOVA. 
+
+```{r}
+kruskal.test(total_norm_tidy ~ sex, data = subset(data, 
+    sampled_on == "t1"))
+kruskal.test(total_norm_tidy ~ genotype, data = subset(data, 
+    sampled_on == "t1"))
+kruskal.test(total_norm_tidy ~ treatment, data = subset(data, 
+    sampled_on == "t1"))
+kruskal.test(total_norm_tidy ~ sex, data = subset(data, 
+    sampled_on == "t2"))
+kruskal.test(total_norm_tidy ~ genotype, data = subset(data, 
+    sampled_on == "t2"))
+kruskal.test(total_norm_tidy ~ treatment, data = subset(data, 
+    sampled_on == "t2"))
+
+summary(aov(total_norm_tidy ~ sex*genotype*treatment, data = subset(data, 
+    sampled_on == "t1")))
+# Remove non-sign. factors
+summary(aov(total_norm_tidy ~ sex+genotype+treatment+sex:genotype+sex:treatment, data = subset(data, 
+    sampled_on == "t1")))
+
+summary(aov(total_norm_tidy ~ sex*genotype*treatment, data = subset(data, 
+    sampled_on == "t2")))
+# Remove non-sign. factors
+summary(aov(total_norm_tidy ~ sex+genotype+treatment, data = subset(data, 
+    sampled_on == "t2")))
+
+```
+Ok, the results are the same with the regular ANOVA and ART ANOVA despite the limitations with each approach. 
+
+## Making plots
+
+```{r}
+boxplot <- ggplot(data = subset(data, timepoint == "t1"), aes(x = genotype, y = total_norm))+
+  geom_jitter(aes(x = genotype, y = total_norm_tidy, color = treatment, shape = treatment), position = position_jitterdodge(), size = 3)+
+  ylim(0, 2.5)+
+  facet_wrap(c("sex"))
+
+boxplot + scale_color_manual(values = c("#EFC000FF", "#0073C2FF"), name = "Treatment", labels = c("5-day", "Control")) + ylab("Food consumption (mm)")+ xlab("Genotype")
+
+
+boxplot <- ggplot(data = subset(data, timepoint == "t2"), aes(x = genotype, y = total_norm))+
+  geom_jitter(aes(x = genotype, y = total_norm_tidy, color = treatment, shape = treatment), position = position_jitterdodge(), size = 3)+
+  facet_wrap(c("sex"))
+
+boxplot + scale_color_manual(values = c("#CD534CFF","#EFC000FF", "#0073C2FF"), name = "Treatment", labels = c("20-day", "5-day", "Control")) + ylab("Food consumption (mm)")+ xlab("Genotype")
+
+
+```
+
+Because we want to compare the immediate response to the long-term response, we need to analyze the 26-day timepoint separately for the 5-day exercise treated and the 20-day exercise treated animals (it's an immediate response for the 20day treatment flies, but a long-term response for the 5day treatment flies).
+
+```{r}
+# Subsetting
+
+t2_5d <- data %>% subset(sampled_on == "t2") %>% subset((treatment == "5d") | (treatment == "c"))
+t2_20d <- data %>% subset(sampled_on == "t2") %>% subset((treatment == "20d") | (treatment == "c"))
+
+# Normality test
+shapiro.test(t2_5d$total_norm_tidy) # not normal
+shapiro.test(t2_20d$total_norm_tidy) # not normal
+
+# Non-parametric tests
+kruskal.test(total_norm_tidy ~ sex, data = t2_5d)
+kruskal.test(total_norm_tidy ~ genotype, data = t2_5d) # sign.
+kruskal.test(total_norm_tidy ~ treatment, data = t2_5d)
+
+kruskal.test(total_norm_tidy ~ sex, data = t2_20d)
+kruskal.test(total_norm_tidy ~ genotype, data = t2_20d) # sign.
+kruskal.test(total_norm_tidy ~ treatment, data = t2_20d)
+
+# ART ANOVA
+model <- art(total_norm_tidy ~ sex*genotype*treatment, data = t2_5d)
+summary(model)
+anova(model)
+rm(model)
+
+model <- art(total_norm_tidy ~ sex*genotype*treatment, data = t2_20d)
+summary(model)
+anova(model)
+rm(model)
+
+# ANOVA
+summary(aov(total_norm_tidy ~ sex+genotype+treatment, data = t2_5d))
+summary(aov(total_norm_tidy ~ sex+genotype+treatment, data = t2_20d))
+
+
+```
