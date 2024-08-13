@@ -1,0 +1,208 @@
+---
+title: "Longevity Data Analysis"
+author: "Heidi Johnson"
+date: "2023-08-23"
+output: html_document
+---
+
+This is the script used to analyze longevity assay data with an aligned ranked ANOVA and to generate the Kaplan-Meier plots.
+
+Load the required packages.
+
+```{r}
+library(readxl)
+library(survival)
+library(survminer)
+library(ggplot2)
+library(ggfortify)
+library(viridis)
+library(dplyr)
+library(ARTool)
+library(here)
+
+rm(list=ls())  # Cleaning environment
+```
+
+Load the data. Each longevity assay compares one of the two treatment durations, either 5- or 20-days, to a control group across 4 genetic backgrounds resulting in 8 datasets. 
+
+```{r}
+
+# load each dataset
+dgrp852_5d <- read_excel("Longevity_852_5D.C_20211123.xlsx", sheet = "Master")
+dgrp786_5d <- read_excel("Longevity_786_5D.C_20211213.xlsx", sheet = "Master")
+dgrp301_5d <- read_excel("Longevity_301_5D.C_20220125.xlsx", sheet = "Master")
+dgrp304_5d <- read_excel("Longevity_304_5D.C_20220810.xlsx", sheet = "Master")
+dgrp852_20d <- read_excel("Longevity_852_20D.C_20220910.xlsx", sheet = "Master")
+dgrp304_20d <- read_excel("Longevity_304_20D.C_20221003.xlsx", sheet = "Master")
+dgrp301_20d <- read_excel("Longevity_301_20D.C_20221118a.xlsx", sheet = "Master")
+dgrp786_20d <- read_excel("Longevity_786_20D.C_20221118b.xlsx", sheet = "Master")
+```
+
+
+Combine datasets into master files for full comparisons.
+
+```{r}
+master_5d <- rbind(dgrp852_5d, dgrp786_5d, dgrp301_5d, dgrp304_5d)
+master_20d <- rbind(dgrp786_20d, dgrp301_20d, dgrp304_20d, dgrp852_20d)
+master <- rbind(master_5d, master_20d)
+```
+
+For ANOVA analysis, the observations of status 0, which are censored events, need to be removed from the data. Create new data objects for that analysis.
+
+```{r}
+master_cen <- subset(master, status == 1)
+master_5d_cen <- subset(master_5d, status == 1)
+master_20d_cen <- subset(master_20d, status == 1)
+```
+
+Adjust the class of the independent variables to factor for ANOVA and Tukey analysis.
+
+```{r}
+master_cen$treatment <- as.factor(master_cen$treatment)
+master_cen$sex <- as.factor(master_cen$sex)
+master_cen$genotype <- as.factor(master_cen$genotype)
+master_cen$cohort <- as.factor(master_cen$cohort)
+
+master_5d_cen$treatment <- as.factor(master_5d_cen$treatment)
+master_5d_cen$sex <- as.factor(master_5d_cen$sex)
+master_5d_cen$genotype <- as.factor(master_5d_cen$genotype)
+master_5d_cen$cohort <- as.factor(master_5d_cen$cohort)
+
+master_20d_cen$treatment <- as.factor(master_20d_cen$treatment)
+master_20d_cen$sex <- as.factor(master_20d_cen$sex)
+master_20d_cen$genotype <- as.factor(master_20d_cen$genotype)
+master_20d_cen$cohort <- as.factor(master_20d_cen$cohort)
+
+#Sanity checks
+summary(master_cen)
+summary(master_5d_cen)
+summary(master_20d_cen)
+```
+
+# Checking assumptions etc.
+```{r}
+# Normality test
+shapiro.test(master_5d_cen$time) # not normal
+shapiro.test(master_20d_cen$time) # not normal
+
+hist(master_5d_cen$time)
+hist(master_20d_cen$time)
+
+#checking residuals
+model1 <- aov(time ~ sex*genotype*treatment, data = master_5d_cen)
+shapiro.test(model1$residuals) # not normal
+model2 <- aov(time ~ sex*genotype*treatment, data = master_20d_cen)
+shapiro.test(model2$residuals) # not normal
+
+hist(model2$residuals)
+hist(model1$residuals)
+
+```
+The histograms don't look bad, and we have lots of samples, so due to the CLT, we can use ANOVA. But we'll run a couple of different analyses, just in case. 
+
+```{r}
+# Non-parametric
+kruskal.test(time ~ sex, data = master_5d_cen)
+kruskal.test(time ~ genotype, data = master_5d_cen)
+kruskal.test(time ~ treatment, data = master_5d_cen)
+
+kruskal.test(time ~ sex, data = master_20d_cen)
+kruskal.test(time ~ genotype, data = master_20d_cen)
+kruskal.test(time ~ treatment, data = master_20d_cen)
+
+# Regular ANOVA
+summary(aov(time ~ sex*genotype*treatment, data = master_5d_cen))
+summary(aov(time ~ sex+genotype+treatment+sex*genotype, data = master_5d_cen)) #reduced model
+
+summary(aov(time ~ sex*genotype*treatment, data = master_20d_cen))
+summary(aov(time ~ sex+genotype+treatment+sex*genotype, data = master_20d_cen)) #reduced model
+
+#post-hoc tests
+rm(model)
+model <- aov(time ~ sex+genotype+treatment+sex:genotype, data = master_5d_cen)
+TukeyHSD(model, conf.level=.95)
+
+rm(model)
+model <- aov(time ~ sex+genotype+treatment+sex:genotype, data = master_20d_cen)
+TukeyHSD(model, conf.level=.95)
+```
+
+Run an aligned ranked ANOVA on lifepsan for the 5-day treatment duration. Use the censored dataset since in the case of status == 0, the death was either unobserved or caused by a researcher and the ANOVA will not account for that.
+
+```{r}
+model_5d <- art(time ~ sex * genotype * treatment, data = master_5d_cen)
+summary(model_5d)
+anova(model_5d)
+```
+
+Run an aligned ranked ANOVA on lifepsan for the 20-day treatment duration. Use the censored dataset since in the case of status == 0, the death was either unobserved or caused by a researcher and the ANOVA will not account for that.
+
+```{r}
+model_20d <- art(time ~ sex * genotype * treatment, data = master_20d_cen)
+summary(model_20d)
+anova(model_20d)
+```
+
+Kaplan-meier plots for the 5-day treatment duration. For survival analysis, use the full data (including censored events).
+
+```{r}
+ggsurvplot(survfit(Surv(time, status) ~ treatment, data = master_5d),
+           facet.by = c("sex", "genotype"),
+           legend.title = "Treatment",
+           legend.labs = c("Control", "5-day"),
+           xlab = "Days",
+           palette = "jco",
+           surv.median.line = "v",
+           pval = TRUE)
+```
+
+Kaplan-meier plots for the 20-day treatment duration. For survival analysis, use the full data (including censored events).
+
+```{r}
+ggsurvplot(survfit(Surv(time, status) ~ treatment, data = master_20d),
+           facet.by = c("sex", "genotype"),
+           legend.title = "Treatment",
+           legend.labs = c("Control", "20-day"),
+           xlab = "Days",
+           palette = "jco",
+           surv.median.line = "v",
+           pval = TRUE)
+```
+
+To review stats of a singular experiment or subpop, use the below. Subset the data 
+as needed
+
+```{r}
+## gives no obs, no events, median, and CIs
+survfit(Surv(time, status) ~ 1, data = master_5d)
+## gives quartiles 
+a <- Surv(master_5d$time, master_5d$status)
+summary(a)
+
+# groups of interest:
+survfit(Surv(time, status) ~ 1, data = subset (master_20d_cen, (genotype == "301" & sex =="M" & treatment == "0")))
+survfit(Surv(time, status) ~ 1, data = subset (master_20d_cen, (genotype == "301" & sex =="M" & treatment == "2")))
+
+survfit(Surv(time, status) ~ 1, data = subset (master_5d_cen, (genotype == "786" & sex =="F" & treatment == "0")))
+survfit(Surv(time, status) ~ 1, data = subset (master_5d_cen, (genotype == "786" & sex =="F" & treatment == "1")))
+```
+# Additional tests within groups
+```{r}
+kruskal.test(time ~ treatment, data = subset (master_5d_cen, (genotype == "301" & sex =="M")))
+kruskal.test(time ~ treatment, data = subset (master_5d_cen, (genotype == "301" & sex =="F")))
+kruskal.test(time ~ treatment, data = subset (master_5d_cen, (genotype == "304" & sex =="M")))
+kruskal.test(time ~ treatment, data = subset (master_5d_cen, (genotype == "304" & sex =="F")))
+kruskal.test(time ~ treatment, data = subset (master_5d_cen, (genotype == "786" & sex =="M")))
+kruskal.test(time ~ treatment, data = subset (master_5d_cen, (genotype == "786" & sex =="F")))
+kruskal.test(time ~ treatment, data = subset (master_5d_cen, (genotype == "852" & sex =="M")))
+kruskal.test(time ~ treatment, data = subset (master_5d_cen, (genotype == "852" & sex =="F")))
+
+kruskal.test(time ~ treatment, data = subset (master_20d_cen, (genotype == "301" & sex =="M")))
+kruskal.test(time ~ treatment, data = subset (master_20d_cen, (genotype == "301" & sex =="F")))
+kruskal.test(time ~ treatment, data = subset (master_20d_cen, (genotype == "304" & sex =="M")))
+kruskal.test(time ~ treatment, data = subset (master_20d_cen, (genotype == "304" & sex =="F")))
+kruskal.test(time ~ treatment, data = subset (master_20d_cen, (genotype == "786" & sex =="M")))
+kruskal.test(time ~ treatment, data = subset (master_20d_cen, (genotype == "786" & sex =="F")))
+kruskal.test(time ~ treatment, data = subset (master_20d_cen, (genotype == "852" & sex =="M")))
+kruskal.test(time ~ treatment, data = subset (master_20d_cen, (genotype == "852" & sex =="F")))
+```
