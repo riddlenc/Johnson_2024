@@ -1,0 +1,286 @@
+---
+title: "Fertility"
+author: "Nicole Riddle"
+date: "2024-05-24"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Setting things up
+```{r}
+## load libraries
+library(readxl)
+library(ggplot2)
+library(dplyr)
+library(ARTool)
+library(here)
+
+rm(list=ls())  # Cleaning environment
+theme_set(theme_classic())
+
+```
+
+## Loading data
+
+```{r}
+data_1 <- read_excel("fertility_20230815.xlsx", sheet = "master")
+data_2 <- read_excel("fertility_20231122.xlsx", sheet = "master")
+data <- rbind(data_1, data_2)
+
+summary(data) # Sanity check
+
+legend <- read_excel("legend_master.xlsx", sheet = "legend")
+```
+
+
+## Getting the data organized
+```{r}
+## unblind the data
+data <- left_join(data, legend, by = "vial_id") 
+
+data$viable <- as.factor(data$viable)
+data$genotype <- as.factor(data$genotype)
+data$timepoint <- as.factor(data$timepoint)
+data$treatment <- as.factor(data$treatment)
+data$sex <- as.factor(data$sex)
+
+t1 <- subset(data, timepoint == "t1")
+t2 <- subset(data, timepoint == "t2")
+
+t2_m <- subset(t2, sex == "m")
+
+```
+
+## Data exploration
+```{r}
+summary(t1)
+summary(t2)
+
+hist(t1$total)
+hist(t2$total)
+
+# Normality test on raw data
+shapiro.test(t1$total)
+shapiro.test(t2$total)
+
+# Normality test on residuals
+model1 <- aov(total ~ sex*genotype*treatment, data = t1)
+shapiro.test(model1$residuals)
+model2 <- aov(total ~ sex*genotype*treatment, data = t2)
+shapiro.test(model2$residuals)
+
+```
+Definitely not normal - too many animals with 0 offspring - might consider re-running the analysis with only the animals that had offspring. 
+
+
+
+## ART ANOVAs
+```{r}
+model <- art(total ~ sex*genotype*treatment, data = subset(data, timepoint == "t1"))
+summary(model)
+anova(model)
+
+model <- art(total ~ sex*genotype*treatment, data = subset(data, timepoint == "t2"))
+summary(model)
+anova(model)
+
+options(max.print = 2000)
+marginal = art.con(model, "genotype:treatment", adjust = "tukey")
+marginal
+
+```
+Sadly, these ART ANOVAs result in errors again, suggesting that it might not be the best way to analyze the data. Thus, I will explore non-parametric tests and regular ANOVAs to see what results would be most reliable. The problem will be the various interaction effects. 
+
+## Nonparametric tests
+```{r}
+kruskal.test(total ~ sex, data = t1)
+kruskal.test(total ~ genotype, data = t1)
+kruskal.test(total ~ treatment, data = t1)
+
+kruskal.test(total ~ sex, data = t2)
+kruskal.test(total ~ genotype, data = t2)
+kruskal.test(total ~ treatment, data = t2)
+```
+These detect a genotype effect at t1 and a sex effect at t2, not surprisingly. 
+
+Is the genoytpe effect driven by the unbalanced design?  One of the genotypes has 32 samples, while the others have 7....
+
+## ANOVA (caution interpreting these results given non-normality)
+
+```{r}
+summary(aov(total ~ sex*genotype*treatment, data = t1))
+# Reduced model
+summary(aov(total ~ sex+genotype+treatment+sex:genotype+genotype:treatment, data = t1))
+
+rm(model)
+model <- aov(total ~ sex+genotype+treatment+sex:genotype+genotype:treatment, data = t1)
+TukeyHSD(model, conf.level=.95)
+
+summary(aov(total ~ sex*genotype*treatment, data = t2))
+
+rm(model)
+model <- aov(total ~ sex*genotype*treatment, data = t2)
+TukeyHSD(model, conf.level=.95)
+
+```
+
+
+## Plots
+```{r}
+boxplot <- ggplot(data = t1, aes(x = genotype, y = total, color = treatment))+
+  geom_boxplot(outlier.size = 3)+
+  geom_jitter(position = position_jitterdodge(), size = 3)+
+  facet_wrap("sex")
+
+boxplot+ scale_color_manual(values = c("#EFC000FF", "#0073C2FF"), 
+                            name = "Treatment", 
+                            labels = c("5-day", "Control"))+ 
+  ylab("Number of offspring")+ xlab("Genotype")
+
+
+boxplot <- ggplot(data = t2, aes(x = genotype, y = total, color = treatment))+
+  geom_boxplot(outlier.size = 3)+
+  geom_jitter(position = position_jitterdodge(), size = 3)+
+  facet_wrap("sex")
+
+boxplot+ scale_color_manual(values = c("#CD534CFF","#EFC000FF", "#0073C2FF"), 
+                            name = "Treatment", 
+                            labels = c("20-day", "5-day", "Control")) + ylab("Number of offspring")+ xlab("Genotype")
+
+
+
+boxplot <- ggplot(data = t2_m, aes(x = genotype, y = total, color = treatment))+
+  geom_boxplot(outlier.size = 3)+
+  geom_jitter(position = position_jitterdodge(), size = 3)
+
+boxplot+ scale_color_manual(values = c("#CD534CFF","#EFC000FF", "#0073C2FF"), 
+                            name = "Treatment", 
+                            labels = c("20-day", "5-day", "Control")) + ylab("Number of offspring")+ xlab("Genotype")
+
+
+boxplot <- ggplot(data = t2_m, aes(x = genotype, y = total, color = treatment))+
+  geom_boxplot(outlier.size = 3)+
+  geom_jitter(position = position_jitterdodge(), size = 3)
+
+boxplot+ scale_color_manual(values = c("#CD534CFF", "#EFC000FF", "#0073C2FF"), 
+                            name = "Treatment", 
+                            labels = c("20-day", "5-day", "Control")) + ylab("Number of offspring")+ xlab("Treatment")
+
+```
+
+
+### Second analysis - downsampled dataset. 
+
+The 301 genotype has many more observataions than the others, possibly skewing the data. Thus, we downsample the data and re-run the analysis. Or I could remove 301 and analyze that by itself. 
+
+```{r}
+# Approach 1 - looking at 301 only vs. not 301
+t1_301 <- subset(t1, genotype == "301")
+t2_301 <- subset(t2, genotype == "301")
+
+shapiro.test(t1_301$total)
+shapiro.test(t2_301$total)
+
+kruskal.test(total ~ sex, data = t1_301)
+kruskal.test(total ~ treatment, data = t1_301)
+kruskal.test(total ~ sex, data = t2_301)
+kruskal.test(total ~ treatment, data = t2_301)
+
+summary(aov(total ~ sex*treatment, data = t1_301))
+summary(aov(total ~ sex*treatment, data = t2_301))
+
+t1_n301 <- subset(t1, genotype != "301")
+t2_n301 <- subset(t2, genotype != "301")
+
+shapiro.test(t1_n301$total)
+shapiro.test(t2_n301$total)
+
+kruskal.test(total ~ sex, data = t1_n301)
+kruskal.test(total ~ genotype, data = t1_n301)
+kruskal.test(total ~ treatment, data = t1_n301)
+kruskal.test(total ~ sex, data = t2_n301)
+kruskal.test(total ~ genotype, data = t2_n301)
+kruskal.test(total ~ treatment, data = t2_n301)
+
+summary(aov(total ~ sex*genotype*treatment, data = t1_n301))
+summary(aov(total ~ sex+genotype+treatment, data = t1_n301)) #reduced model
+summary(aov(total ~ sex*genotype*treatment, data = t2_n301))
+summary(aov(total ~ sex+genotype+treatment, data = t2_n301)) #reduced model
+
+## Approach 2 - downsampling
+# for t1
+sel_301_t1 <- subset (t1_301, rep_id %in% c("0570A", "0575A", "0581A", "772A", "0616A", "0779A", "0606A", "0777A"))
+
+sub_t1 <- rbind(t1_n301, sel_301_t1)
+
+shapiro.test(sub_t1$total)
+
+kruskal.test(total ~ sex, data = sub_t1)
+kruskal.test(total ~ genotype, data = sub_t1)
+kruskal.test(total ~ treatment, data = sub_t1)
+
+summary(aov(total ~ sex*genotype*treatment, data = sub_t1))
+summary(aov(total ~ sex + genotype + treatment + genotype*treatment, data = sub_t1))
+
+rm(model)
+model <- art(total ~ sex*genotype*treatment, data = sub_t1)
+summary(model)
+anova(model)
+
+# for t2
+sel_301_t2 <- subset (t2_301, rep_id %in% c("0766A", "0785A", "0786A", "769A", "0788A", "0788B", "0770A", "0770B", "0771A", "0778A", "0778B", "0778C", "0774A", "0774B", "0774C", "0773A", "0773B", "0776A"))
+
+sub_t2 <- rbind(t2_n301, sel_301_t2)
+
+kruskal.test(total ~ sex, data = sub_t2)
+kruskal.test(total ~ genotype, data = sub_t2)
+kruskal.test(total ~ treatment, data = sub_t2)
+
+summary(aov(total ~ sex*genotype*treatment, data = sub_t2))
+summary(aov(total ~ sex + genotype + treatment, data = sub_t2))
+
+rm(model)
+model <- art(total ~ sex*genotype*treatment, data = sub_t2)
+summary(model)
+anova(model)
+
+```
+
+
+###########################################
+
+## New plots for revision
+
+```{r}
+
+new.plot <- ggplot(data = t1, aes(x = genotype, y = total, color = treatment))+
+  geom_jitter(position = position_jitterdodge(jitter.width = 0.3), size = 2)+
+ stat_summary(aes(group = treatment), fun.data = mean_cl_normal, geom = "errorbar", width = 0.2, color = "black", position = position_dodge(width = 0.75)) +
+ stat_summary(aes(group = treatment), fun = mean, geom = "crossbar", linewidth = 0.5, width = 0.4, color = "black", position = position_dodge(width = 0.75 ) )+ 
+  facet_wrap("sex")
+
+new.plot+ scale_color_manual(values = c("#EFC000FF", "#0073C2FF"), 
+                            name = "Treatment", 
+                            labels = c("5-day", "Control"))+ 
+  ylab("Number of offspring")+ xlab("Genotype")
+
+rm(new.plot)
+
+boxplot <- ggplot(data = t2, aes(x = genotype, y = total, color = treatment))+
+  geom_jitter(position = position_jitterdodge(jitter.width = 0.3), size = 2)+
+  stat_summary(aes(group = treatment), fun.data = mean_cl_normal, geom = "errorbar", width = 0.2, color = "black", position = position_dodge(width = 0.75)) +
+ stat_summary(aes(group = treatment), fun = mean, geom = "crossbar", linewidth = 0.5, width = 0.4, color = "black", position = position_dodge(width = 0.75 ) )+
+  facet_wrap("sex")
+
+boxplot+ scale_color_manual(values = c("#CD534CFF","#EFC000FF", "#0073C2FF"), 
+                            name = "Treatment", 
+                            labels = c("20-day", "5-day", "Control")) + ylab("Number of offspring")+ xlab("Genotype")
+
+```
+
+
+
