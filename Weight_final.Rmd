@@ -1,0 +1,344 @@
+---
+title: "Figure4 - body weight"
+author: "Nicole Riddle"
+date: "2024-07-26"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+Part 1: Setup
+
+Load the required libraries and set the theme
+``` {r}
+library(readxl)
+library(ggplot2)
+library(magrittr)
+library(tibble)
+library(ARTool)
+theme_set(theme_classic())
+```
+
+Set your working directory and load the data file.
+``` {r}
+## as long as the script and data files are in the same folder, here is sufficient.
+library(here)
+## set working directory
+##setwd("/Users/heidijohnson/Documents/data/QMR")
+
+## load data 
+data <- read_excel("QMR_master.xlsx", sheet = "master")
+
+## Set the independent variables to factors
+data$genotype <- as.factor(data$genotype)
+data$sex <- as.factor(data$sex)
+data$timepoint <- as.factor(data$timepoint)
+data$treatment <- as.factor(data$treatment)
+```
+
+Age is expected to impact body condition, so isolate each timepoint independently to discover is there is a significant treatment effect at any of the investagted ages.
+``` {r}
+## t1 is 10 days old, t2 is 25 days old, t3 is 40 days old
+timepoint1 <- subset(data, timepoint=="t1")
+timepoint2 <- subset(data, timepoint=="t2")
+timepoint3 <- subset(data, timepoint=="t3")
+```
+
+###################################################
+Part 2: Total body weight
+
+Testing for a batch effect:
+```{r}
+kruskal.test(weight_norm_mg ~ set, data = timepoint1)
+kruskal.test(weight_norm_mg ~ set, data = timepoint2)
+kruskal.test(weight_norm_mg ~ set, data = timepoint3)
+```
+No batch effects for timepoints 1 and 2, but for timepoint 3, there is a signifiant effect for set, suggesting that this factor needs to be in the model, at least to start with.
+
+Normality tests
+```{r}
+shapiro.test(timepoint1$weight_norm_mg)
+shapiro.test(timepoint2$weight_norm_mg)
+shapiro.test(timepoint3$weight_norm_mg)
+
+#checking residuals
+model1 <- aov(weight_norm_mg ~ sex*genotype*treatment, data = timepoint1)
+shapiro.test(model1$residuals)
+model2 <- aov(weight_norm_mg ~ sex*genotype*treatment, data = timepoint2)
+shapiro.test(model2$residuals)
+model3 <- aov(weight_norm_mg ~ sex*genotype*treatment, data = timepoint3)
+shapiro.test(model3$residuals)
+```
+Ok, none of this is normal, but we have large sample sizes, so a regular ANOVA is an option. We'll start with a rank transformed ANOVA to see how that goes. 
+
+
+Run the ranked anova for the first timepoint:
+```{r}
+model <- art(weight_norm_mg ~ sex*genotype*treatment, data = timepoint1)
+summary(model)
+anova(model)
+```
+
+For this dataset, the ART ANOVA gives a warning, suggesting that the results might not be reliable. Thus, I'm running a few additional tests. 
+
+```{r}
+# non-parametric tests for main effects
+kruskal.test(weight_norm_mg ~ sex, data = timepoint1)
+kruskal.test(weight_norm_mg ~ genotype, data = timepoint1)
+kruskal.test(weight_norm_mg ~ treatment, data = timepoint1)
+
+# regular ANOVA despite normality violation (type 3 ss)
+options(contrasts = c("contr.sum","contr.poly"))
+model <- lm(weight_norm_mg ~ sex * genotype * treatment, data=timepoint1)
+drop1(model, .~., test="F")
+
+options(contrasts=c("contr.treatment", "contr.poly")) # reset to default
+summary(aov(weight_norm_mg ~ sex * genotype * treatment, data=timepoint1))
+# Reducing the model to significant factors
+summary(aov(weight_norm_mg ~ sex + genotype + treatment + sex:genotype, data=timepoint1))
+#summary(aov(weight_norm_mg ~ genotype * sex * treatment, data=timepoint1))
+#summary(aov(weight_norm_mg ~ treatment * genotype * sex, data=timepoint1))
+# these give slightly different result, but the same things are significant.
+
+```
+
+In the non-parametric tests, sex and genotype are significant.
+In the regular ANOVA, sex, genotype, sex*genotype are significant.
+Thus, I think the most conservative conclusion is that the sex*genotype interaction is what is important.
+
+
+Run the ranked anova for the second timepoint:
+```{r}
+model <- art(weight_norm_mg ~ genotype*sex*treatment, data = timepoint2)
+summary(model)
+anova(model)
+```
+
+Again, for this dataset, the ART ANOVA gives a warning, suggesting that the results might not be reliable. Thus, I'm running a few additional tests. 
+
+```{r}
+# non-parametric tests for main effects
+kruskal.test(weight_norm_mg ~ sex, data = timepoint2)
+kruskal.test(weight_norm_mg ~ genotype, data = timepoint2)
+kruskal.test(weight_norm_mg ~ treatment, data = timepoint2)
+
+# regular ANOVA despite normality violation (type 3 ss)
+options(contrasts = c("contr.sum","contr.poly"))
+model <- lm(weight_norm_mg ~ sex * genotype * treatment, data=timepoint2)
+drop1(model, .~., test="F")
+
+options(contrasts=c("contr.treatment", "contr.poly")) # reset to default
+summary(aov(weight_norm_mg ~ sex * genotype * treatment, data=timepoint2))
+# Reducing factors to significant ones
+summary(aov(weight_norm_mg ~ sex + genotype + treatment + sex:genotype, data=timepoint2))
+#summary(aov(weight_norm_mg ~ genotype * sex * treatment, data=timepoint2))
+#summary(aov(weight_norm_mg ~ treatment * genotype * sex, data=timepoint2))
+# these give slightly different result, but the same things are significant.
+
+```
+
+In the non-parametric tests, sex and genotype are significant.
+In the regular ANOVA, sex, genotype, sex*genotype are significant.
+Thus, I think the most conservative conclusion is that the sex*genotype interaction is what is important. I would treat the genotype*treatment interaction with caution. 
+
+Because we are interested in the immediate versus long-term effects, I want to also run the analyses for the 5 day and 20 day treatments separately, since timepoint 2 is an immediate effect forthe 20 day treatment and a long-term effect for the 5 day treatment. I'm also doing that for timepoint 3.
+```{r}
+# Subsetting
+timepoint2.5d <- subset(timepoint2, (treatment == "control" | treatment == "5d"))
+timepoint2.20d <- subset(timepoint2, (treatment == "control" | treatment == "20d"))
+
+timepoint3.5d <- subset(timepoint3, (treatment == "control" | treatment == "5d"))
+timepoint3.20d <- subset(timepoint3, (treatment == "control" | treatment == "20d"))
+
+# Normality tests
+shapiro.test(timepoint2.5d$weight_norm_mg) # not normal
+shapiro.test(timepoint2.20d$weight_norm_mg) # not normal
+
+shapiro.test(timepoint3.5d$weight_norm_mg) # not normal
+shapiro.test(timepoint3.20d$weight_norm_mg) # not normal
+
+#ART ANOVA
+model <- art(weight_norm_mg ~ sex*genotype*treatment, data = timepoint2.5d)
+summary(model)
+anova(model)
+options(max.print = 2000)
+marginal = art.con(model, "sex:genotype:treatment", adjust = "tukey")
+marginal
+rm(model)
+
+model <- art(weight_norm_mg ~ sex*genotype*treatment, data = timepoint2.20d)
+summary(model)
+anova(model)
+options(max.print = 2000)
+marginal = art.con(model, "sex:genotype:treatment", adjust = "tukey")
+marginal
+rm(model)
+
+model <- art(weight_norm_mg ~ sex*genotype*treatment, data = timepoint3.5d)
+summary(model)
+anova(model)
+options(max.print = 2000)
+marginal = art.con(model, "sex:genotype:treatment", adjust = "tukey")
+marginal
+rm(model)
+
+model <- art(weight_norm_mg ~ sex*genotype*treatment, data = timepoint3.20d)
+summary(model)
+anova(model)
+options(max.print = 2000)
+marginal = art.con(model, "sex:genotype:treatment", adjust = "tukey")
+marginal
+rm(model)
+
+# ANOVA
+summary(aov(weight_norm_mg ~ sex + genotype + treatment + sex*genotype, data=timepoint2.5d))
+
+summary(aov(weight_norm_mg ~ sex + genotype + treatment + sex*genotype, data=timepoint2.20d))
+
+summary(aov(weight_norm_mg ~ sex + genotype + treatment + sex*genotype, data=timepoint3.5d))
+
+summary(aov(weight_norm_mg ~ sex + genotype + treatment + sex*genotype, data=timepoint3.20d))
+
+
+```
+
+
+Run the ranked anova for the third timepoint:
+```{r}
+model <- art(weight_norm_mg ~ genotype*sex*treatment, data = timepoint3)
+summary(model)
+anova(model)
+```
+
+Again, for this dataset, the ART ANOVA gives a warning, suggesting that the results might not be reliable. Thus, I'm running a few additional tests. 
+
+```{r}
+# non-parametric tests for main effects
+kruskal.test(weight_norm_mg ~ sex, data = timepoint3)
+kruskal.test(weight_norm_mg ~ genotype, data = timepoint3)
+kruskal.test(weight_norm_mg ~ treatment, data = timepoint3)
+
+# regular ANOVA despite normality violation (type 3 ss)
+options(contrasts = c("contr.sum","contr.poly"))
+model <- lm(weight_norm_mg ~ sex * genotype * treatment, data=timepoint3)
+drop1(model, .~., test="F")
+
+options(contrasts=c("contr.treatment", "contr.poly")) # reset to default
+summary(aov(weight_norm_mg ~ sex * genotype * treatment, data=timepoint3))
+#Reducing the factors to significant ones
+summary(aov(weight_norm_mg ~ sex + genotype + treatment + sex:genotype, data=timepoint3))
+#summary(aov(weight_norm_mg ~ genotype * sex * treatment, data=timepoint3))
+#summary(aov(weight_norm_mg ~ treatment * genotype * sex, data=timepoint3))
+# these give slightly different result, but the same things are significant.
+
+```
+In the non-parametric tests, sex and genotype are significant.
+In the regular ANOVA, sex, genotype, sex*genotype are significant.
+Thus, I think the most conservative conclusion is that the sex*genotype interaction is what is important.
+
+Also, for timepoint 3, the Kruskal Wallis test suggested a batch effect, which means I need to explicitly test that here as well. 
+
+```{r}
+timepoint3$set <- as.factor(timepoint3$set)
+model <- art(weight_norm_mg ~ genotype*sex*treatment*set, data = timepoint3)
+summary(model)
+anova(model)
+```
+Hmmh, this is not working, and there is no information online about this specific error. In a regular ANOVA, set is not a sign. factor, so hopefully, we are ok. I think this might have to do with the fact that the design is not completely balanced. I think this is fine, but the unbalanced design also explains why Kruskal-Wallis might give a positive result - it's due to the uneven destribution of genotypes most likely. 
+
+
+Generate a boxplot for the first timepoint
+``` {r}
+boxplot <- ggplot(data = timepoint1, aes(x = genotype, y = weight_norm_mg))+
+  geom_boxplot(aes(fill = treatment))+
+  facet_wrap(c("sex"))
+
+boxplot
+```
+
+Generate a boxplot for the second timepoint
+``` {r}
+boxplot <- ggplot(data = timepoint2, aes(x = genotype, y = weight_norm_mg))+
+  geom_boxplot(aes(fill = treatment))+
+  facet_wrap(c("sex"))
+
+boxplot
+```
+
+Generate a boxplot for the third timepoint
+``` {r}
+boxplot <- ggplot(data = timepoint3, aes(x = genotype, y = weight_norm_mg))+
+  geom_boxplot(aes(fill = treatment))+
+  facet_wrap(c("sex"))
+
+boxplot
+```
+
+Plot all timepoints together.
+
+``` {r}
+boxplot <- ggplot(data = subset(data, (treatment == "control" | treatment == "5d")), aes(x = genotype, y = weight_norm_mg))+
+  geom_jitter(aes(x = genotype, y = weight_norm_mg, color = treatment, shape = treatment), position = position_jitterdodge(jitter.width = 0.3))+
+  facet_wrap(c("timepoint", "sex"), nrow = 3)
+
+boxplot + scale_color_manual(values = c("#EFC000FF", "#0073C2FF"), name = "Treatment", labels = c("5-day", "Control")) + ylab("Body weight (mg)")+ xlab("Genotype")
+
+
+boxplot <- ggplot(data = subset(data, (treatment == "control" | treatment == "20d")), aes(x = genotype, y = weight_norm_mg))+
+  geom_jitter(aes(x = genotype, y = weight_norm_mg, color = treatment, shape = treatment), position = position_jitterdodge(jitter.width = 0.3))+
+  facet_wrap(c("timepoint", "sex"), nrow = 3)
+
+boxplot + scale_color_manual(values = c("#CD534CFF","#0073C2FF"), name = "Treatment", labels = c("20-day", "Control")) + ylab("Body weight (mg)")+ xlab("Genotype")
+```
+
+#############################################
+Part 3: Post-hoc
+
+
+Post-hoc- investigate effects or interactions that are significant at any of the ages
+```{r}
+
+## the factor should be the factor of interest
+##  "weight_norm_mg" as a character string
+
+## specify which timepoint you are investigating 
+## either timepoint1, timepoint2, or timepoint3 as an object
+
+## set the model based on above info
+model <- art(weight_norm_mg ~ sex*genotype*treatment, data = timepoint3)
+anova(model)
+```
+Based on the significant factors in the ANOVA, use a Tukey to compare the subgroups
+```{r}
+options(max.print = 2000)
+marginal = art.con(model, "genotype:treatment", adjust = "tukey")
+marginal
+```
+
+################################################
+Part 4: Different plot for reviewer
+
+```{r}
+
+
+new.plot <- ggplot(data = subset(data, (treatment == "control" | treatment == "5d")), aes(x = genotype, y = weight_norm_mg, shape = treatment, color = treatment)) + 
+geom_jitter(position = position_jitterdodge(jitter.width = 0.3)) +
+ stat_summary(aes(group = treatment), fun.data = mean_cl_normal, geom = "errorbar", width = 0.2, color = "black", position = position_dodge(width = 0.75)) +
+ stat_summary(aes(group = treatment), fun = mean, geom = "crossbar", size = 0.5, width = 0.4, color = "black", position = position_dodge(width = 0.75 ) )+ 
+facet_wrap(c("timepoint", "sex"), nrow = 3)
+
+new.plot + scale_color_manual(values = c("#EFC000FF", "#0073C2FF"), name = "Treatment", labels = c("5-day", "Control")) + ylab("Body weight (mg)")+ xlab("Genotype")
+
+rm(new.plot)
+
+new.plot <- ggplot(data = subset(data, (treatment == "control" | treatment == "20d")), aes(x = genotype, y = weight_norm_mg, shape = treatment, color = treatment)) + 
+geom_jitter(position = position_jitterdodge(jitter.width = 0.3)) +
+ stat_summary(aes(group = treatment), fun.data = mean_cl_normal, geom = "errorbar", width = 0.2, color = "black", position = position_dodge(width = 0.75)) +
+ stat_summary(aes(group = treatment), fun = mean, geom = "crossbar", size = 0.5, width = 0.4, color = "black", position = position_dodge(width = 0.75) )+ 
+facet_wrap(c("timepoint", "sex"), nrow = 3)
+
+new.plot + scale_color_manual(values = c("#CD534CFF","#0073C2FF"), name = "Treatment", labels = c("20-day", "Control")) + ylab("Body weight (mg)")+ xlab("Genotype")
+```
